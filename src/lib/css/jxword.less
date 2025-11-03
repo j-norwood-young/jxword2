@@ -1,0 +1,502 @@
+/* Menu Toggle Styles */
+.jxword-menu-toggle {
+    display: block;
+    position: relative;
+    margin-left: 3px;
+    top: 0px;
+    left: 0px;
+    z-index: 10;
+    -webkit-user-select: none;
+    user-select: none;
+
+    .jxword-menu-break:hover {
+        background-color: white;
+    }
+
+    input {
+        display: block;
+        width: 40px;
+        height: 32px;
+        position: absolute;
+        top: -7px;
+        left: -5px;
+        cursor: pointer;
+        opacity: 0; /* hide this */
+        z-index: 2; /* and place it over the hamburger */
+        -webkit-touch-callout: none;
+    }
+
+    span {
+        display: block;
+        width: 18px;
+        height: 3px;
+        margin-bottom: 3px;
+        position: relative;
+        background: #000000;
+        border-radius: 0px;
+        z-index: 1;
+    }
+}
+
+.jxword-menu {
+    position: absolute;
+    width: 250px;
+    margin: -23px 0 0 -5px;
+    padding: 23px 10px 10px 10px;
+    background: #FFFFFF;
+    list-style-type: none;
+    -webkit-font-smoothing: antialiased;
+    transform-origin: 0% 0%;
+    opacity: 0;
+    visibility: hidden;
+    z-index: -1;
+    transition: transform 0.5s cubic-bezier(0.77,0.2,0.05,1.0),
+                opacity 0.55s ease,
+                visibility 0.55s ease;
+    border-radius: 2px;
+    border: 1px solid rgba(36, 36, 36, 0.5);
+    box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.5);
+}
+
+.jxword-menu li {
+    padding: 5px 5px;
+    font-size: 12pt;
+    pointer-events: auto;
+    z-index: 10;
+}
+
+.jxword-menu-toggle input:checked ~ ul {
+    transform: none;
+    opacity: 1;
+    visibility: visible;
+}
+
+/* Overlay Styles */
+.jxword-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.5);
+    z-index: 1000;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.jxword-overlay-content {
+    background: white;
+    padding: 2rem;
+    border-radius: 8px;
+    max-width: 500px;
+    text-align: center;
+}
+
+.jxword-overlay-button {
+    margin-top: 10px;
+    /* width: 100%;
+    height: 30px; */
+    padding: 10px;
+    background-color: #3b3b3b;
+    color: white;
+    border-radius: 5px;
+    font-size: 16px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: background-color 0.2s ease-in-out;
+
+    /* &:hover {
+        background-color: #949494;
+    } */
+}
+
+.jxword-overlay-title {
+    font-size: 2em;
+    font-weight: bold;
+    margin-bottom: 1em;
+    line-height: 120%;
+}
+
+/* Various messages */
+.jxword-complete_overlay {
+    display: none;
+    display: block;
+    position: fixed;
+    margin: auto 15%;
+    padding: 20px;
+    background-color: white;
+    border-radius: 5px;
+    border: 1px solid rgba(36, 36, 36, 0.5);
+}
+
+.jxword-overlay-time {
+    font-size: 1.2em;
+    font-weight: bold;
+    margin-bottom: 1em;
+}
+
+.jxword-overlay-share-option {
+    /* Share button */
+    display: flex;
+    flex-direction: row;
+    justify-content: center;
+    align-items: center;
+    margin-top: 1em;
+    padding: 10px;
+    background-color: #f0f0f0;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: background-color 0.2s ease-in-out;
+}
+
+.jxword-overlay-share-option:hover {
+    background-color: #e0e0e0;
+}
+
+/* Keyboard Styles */
+.jxword-keyboard {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 8px;
+    background: #f5f5f5;
+    border-top: 1px solid #ddd;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.jxword-keyboard-row {
+    display: flex;
+    gap: 2px;
+    justify-content: center;
+    width: 100%;
+    flex-wrap: nowrap;
+}
+
+.jxword-key {
+    background: white;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    padding: 6px 8px;
+    font-size: 14px;
+    font-weight: bold;
+    cursor: pointer;
+    user-select: none;
+    min-width: 32px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background-color 0.2s;
+    flex: 1;
+    max-width: 40px;
+}
+
+.jxword-key:hover {
+    background: #e0e0e0;
+}
+
+.jxword-key:active {
+    background: #d0d0d0;
+}
+
+.jxword-key-backspace {
+    background: #ff6b6b;
+    color: white;
+    border-color: #ff5252;
+}
+
+.jxword-key-backspace:hover {
+    background: #ff5252;
+}
+
+.jxword-key-backspace:active {
+    background: #ff4444;
+}
+
+/* Orientation Lock */
+/* https://css-tricks.com/snippets/css/orientation-lock/ */
+@media screen and (min-width: 320px) and (max-width: 767px) and (orientation: landscape) {
+  /* html { */
+    transform: rotate(-90deg);
+    transform-origin: left top;
+    width: 100vh;
+    overflow-x: hidden;
+    position: absolute;
+    top: 100%;
+    left: 0;
+  /* } */
+}
+
+.jxword-container {
+    width: 100%; 
+    height: 100%;
+    margin-top: 20px;
+    display: flex; 
+    flex-direction: column;
+    max-width: var(--responsive--alignwide-width);
+    font-family: 'Times New Roman', Times, serif;
+
+    .jxword-play-area {
+        display: flex;
+        flex-direction: row;
+        flex-wrap: nowrap;
+
+        .jxword-grid-container {
+            flex-grow: 1;
+            max-width: 100%;
+        }
+    }
+
+    .jxword-sr-only { /* Accessibility */
+        position:absolute;
+        left:-10000px;
+        top:auto;
+        width:1px;
+        height:1px;
+        overflow:hidden;
+    }
+
+    .jxword-header {
+        display: flex;
+        flex-flow: row wrap;
+        justify-content: space-between;
+        width: 100%;
+        z-index: 10;
+
+        .jxword-timer {
+            min-width: 77px;
+            font-size: 12pt;
+        }
+
+        /* .jxword-controls {
+            
+        } */
+
+        .jxword-pause {
+            box-sizing: border-box;
+            height: 15px;
+            
+            border-color: transparent transparent transparent #202020;
+            transition: 100ms all ease;
+            will-change: border-width;
+            cursor: pointer;
+
+            /* play state */
+            &.jxword-play {
+                border-style: solid;
+                border-width: 7px 0 7px 12px;
+            }
+            
+            /* paused state */
+            border-style: double;
+            border-width: 0px 0 0px 12px;
+            
+        }
+    }
+
+    /* SVG section */
+    .jxword-svg-container {
+        flex-grow: 1;
+        touch-action: none;
+        user-select: none;
+        -moz-user-select: none;
+        -webkit-user-select: none;
+        -ms-user-select: none;
+
+        svg.jxword-svg {
+            max-width: 100%; 
+            max-height: 100%;
+
+            .jxword-cell {
+                text {
+                    pointer-events: none;
+                }
+                rect {
+                    outline: none;
+                }
+            }
+
+            .jxword-letter-is-correct {
+                fill: #3e793f;
+                font-weight: bold;
+            }
+        }
+    }
+
+    /* Question section */
+    .jxword-question-container {
+        width: 50%; 
+        height: 100%; 
+        display: flex; 
+        flex-direction: row;
+        padding-left: 5px;
+        max-height: 80vh;
+
+        .jxword-questions-down, .jxword-questions-across {
+            overflow-y: scroll;
+        }
+
+        .jxword-questions-list {
+            list-style: none;
+            line-height: 1.5;
+            font-size: 12px;
+            padding-left: 0px;
+            display: flex;
+            flex-direction: column;
+            margin-right: 20px;
+        }
+
+        .jxword-questions-list-item-num {
+            margin-right: 5px;
+            text-align: right;
+            width: 25px;
+            min-width: 25px;
+            font-weight: bold;
+        }
+
+        .jxword-questions-list-item {
+            padding-left: 3px;
+            cursor: pointer;
+        }
+
+        .active {
+            background-color: #b8ddec;
+        }
+    }
+
+    .jxword-single-question-container {
+        width: 100%;
+        /* min-height: 40px; */
+        background-color: #b8ddec;
+        justify-content: stretch;
+        align-items: stretch;
+        align-content: center;
+        display: flex;
+        flex-direction: row;
+        margin-top: 5px;
+
+        .jxword-arrow {
+            font-size: 20px;
+            padding: 2px 4px 4px 2px;
+            cursor: pointer;
+            /* height: 100%; */
+            min-width: 20px;
+            /* border: 1px #000 solid; */
+            align-items: center;
+            justify-content: center;
+            display: flex;
+        }
+
+        .jxword-single-question {
+            padding: 4px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-grow: 4;
+        }
+    }
+    
+
+    @media only screen and (min-device-width: 480px) {
+        /* flex-direction: row;
+        flex-wrap: wrap; */
+        .jxword-mobile-only {
+            display: none;
+        }
+    }
+
+    /* General mobile keyboard optimizations */
+    @media only screen and (max-width: 480px) {
+        .jxword-keyboard {
+            padding: 6px 4px;
+            gap: 3px;
+        }
+
+        .jxword-keyboard-row {
+            gap: 1px;
+            padding: 0 2px;
+        }
+
+        .jxword-key {
+            min-width: 28px;
+            height: 32px;
+            font-size: 12px;
+            padding: 4px 6px;
+            max-width: 36px;
+        }
+    }
+
+    /* Mobile, Landscape */
+    @media only screen and (max-device-width: 480px) and (-webkit-min-device-pixel-ratio: 2) and (orientation: portrait) {
+        /* flex-direction: column; */
+        width: calc(100% - 10px);
+        .jxword-desktop-only {
+            display: none;
+        }
+
+        .jxword-svg-container {
+            width: 100%;
+        }
+
+        .jxword-single-question-container {
+            display: flex;
+        }
+
+        /* Mobile keyboard optimizations */
+        .jxword-keyboard {
+            padding: 6px 4px;
+            gap: 3px;
+        }
+
+        .jxword-keyboard-row {
+            gap: 1px;
+            padding: 0 2px;
+        }
+
+        .jxword-key {
+            min-width: 28px;
+            height: 32px;
+            font-size: 12px;
+            padding: 4px 6px;
+            max-width: 36px;
+        }
+    }
+
+    /* Additional mobile optimizations for very small screens */
+    @media only screen and (max-width: 375px) {
+        .jxword-keyboard {
+            padding: 4px 2px;
+            gap: 2px;
+        }
+
+        .jxword-keyboard-row {
+            gap: 1px;
+            padding: 0 1px;
+        }
+
+        .jxword-key {
+            min-width: 24px;
+            height: 28px;
+            font-size: 11px;
+            padding: 3px 4px;
+            max-width: 32px;
+        }
+    }
+
+    /* Hide ads */
+    .in-article-action-1 { 
+        display: none !important;
+    }
+    
+    #browsi_ad_0_ai_1_rc_0 {
+        display: none !important; 
+    }
+}
+
+
+
+
+

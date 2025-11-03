@@ -1,0 +1,313 @@
+<script lang="ts">
+	// Svelte stuff
+	import { onMount, tick } from "svelte";
+	// Types
+	import type { XD } from "$lib/types/XD";
+	import type { Question as QuestionType } from "$lib/types/Question";
+	import type { CrosswordData } from "$lib/types/Crossword";
+	// Components
+	import Menu from "./Menu.svelte";
+	import CrosswordGrid from "./CrosswordGrid.svelte";
+	import Instructions from "./Instructions.svelte";
+	import SizeSlider from "./SizeSlider.svelte";
+	import Print from "./Print.svelte";
+	import FileUpload from "./FileUpload.svelte";
+	import Patterns from "./Patterns.svelte";
+	import Button from "./Button.svelte";
+	import Input from "./Input.svelte";
+	import Dropdown from "./Dropdown.svelte";
+	// Libraries
+	import { parseCrosswordXML } from "../libs/crossword_xml_parse.js";
+	import { saveState, restoreState, clearState } from '../libs/savestate.js';
+	import { XDEncode } from "$lib/libs/xd-encode";
+	import XDParser from "xd-crossword-parser";
+
+	type Props = {
+		xd?: string;
+		size?: number;
+		difficulties?: string[];
+		types?: string[];
+		save_state?: boolean;
+		displayXd?: boolean;
+		symmetry?: boolean;
+		download_filename?: string;
+	}
+
+	let { 
+		xd,
+		size = 15,
+		difficulties = [
+			"Easy", "Medium", "Hard", "Evil" 
+		], types = [
+			"Straight", "Quick", "Cryptic"
+		], save_state = true, 
+		displayXd = true, 
+		symmetry = true, 
+		download_filename = "crossword.xd"
+	}: Props = $props();
+	
+
+
+	// State
+	let grid = $state([...Array(size)].map(e => Array(size)));
+	let localState: XD | undefined = $state(undefined);
+	let data: CrosswordData = $state({
+		title: "",
+		author: "",
+		date: "",
+		difficulty: "Medium",
+		type: "Straight",
+		copyright: "",
+		grid: [...Array(size)].map(e => Array(size)),
+		clues: {
+			across: [],
+			down: [],
+		},
+	});
+	let instructionsVisible: boolean = $state(false);
+	let editMode: boolean = $state(true);
+	let currentDirection = $state("across");
+	let currentQuestion = $state(null);
+
+	// async function handleStateChange() {
+	// 	if (!save_state) return;
+	// 	if (!localState) return;
+	// 	saveState(localState);
+	// 	xd = XDEncode(localState) || "";
+	// 	gridComponent.handleFocus();
+	// }
+
+	onMount(() => {
+		if (xd) {
+			loadXd(xd);
+			return;
+		} 
+		if (save_state) {
+			restoreState();
+			return;
+		}
+	});
+	
+	function handleReset() {
+		// clearState();
+		// size = 15;
+		// gridComponent.setDir("across");
+		// gridComponent.setCurrentPos(0, 0);
+		// title = "";
+		// author = "";
+		// editor = "";
+		// copyright = "";
+		// date = "";
+		// difficulty = "Medium";
+		// type = "Straight";
+		// grid = [...Array(15)].map(e => Array(15));;
+		// questionsAcross.set([]);
+		// clearState();
+		// questionsDown.set([]);
+		// clearState();
+		// xd = "";
+		// clearState();
+	}
+
+	async function loadXd(xd: string) {
+		try {
+			const result = XDParser(xd);
+			console.log({result});
+			const newData: CrosswordData = {
+				title: result.meta.Title || "",
+				author: result.meta.Author || "",
+				copyright: result.meta.Copyright || "",
+				date: result.meta.Date || "",
+				difficulty: result.meta.Difficulty || "",
+				type: result.meta.Type || "",
+				grid: result.grid as string[][],
+				clues: {
+					across: result.across.map((q: any) => ({
+						number: q.num,
+						clue: q.question,
+						answer: q.answer
+					})),
+					down: result.down.map((q: any) => ({
+						number: q.num,
+						clue: q.question,
+						answer: q.answer
+					}))
+				}
+			};
+			data = newData;
+			size = data.grid.length;
+			await tick();
+			for (let question of data.clues.across) {
+				let matching_question = result.across.find(q => q.num === `A${question.number}`);
+				if (matching_question) {
+					question.answer = matching_question.answer;
+				}
+			}
+			for (let question of data.clues.down) {
+				let matching_question = result.down.find(q => q.num === `D${question.number}`);
+				if (matching_question) {
+					question.answer = matching_question.answer;
+				}
+			}
+			return true;
+		} catch (e) {
+			console.log(e);
+			return false;
+		}
+	}
+
+	async function loadXML(xml: string) {
+		console.log("loading xml")
+		try {
+			// const result = parseCrosswordXML(xml);
+			// title = result.title || "";
+			// author = result.creator || "";
+			// editor = result.editor || "";
+			// copyright = result.copyright || "";
+			// size = result.width || 0;
+			// grid = result.grid;
+			// console.log(result);
+			// // Map the questions to include required properties
+			// const mappedAcross = result.questions.across.map((q: any) => ({
+			// 	...q,
+			// 	answer: q.answer || "",
+			// 	editing: false
+			// }));
+			// const mappedDown = result.questions.down.map((q: any) => ({
+			// 	...q,
+			// 	answer: q.answer || "",
+			// 	editing: false
+			// }));
+			// questionsAcross.set(mappedAcross);
+			// questionsDown.set(mappedDown);
+			// gridComponent.setDir("across");
+			// gridComponent.setCurrentPos(0, 0);
+			// await tick();
+		} catch (e) {
+			console.log(e);
+		}
+	}
+
+	function handleInstructions() {
+		instructionsVisible = !instructionsVisible;
+	}
+
+	function downloadXD() {
+		// Download contents of xd
+		// const file = new Blob([dataxd], {type: "text/plain;charset=utf-8"});
+		// const downloadLink = document.createElement("a");
+		// downloadLink.download = download_filename || "crossword.xd";
+		// downloadLink.href = URL.createObjectURL(file);
+		// downloadLink.click();
+	}
+
+	function handleXDUpload(msg: { content: string, filename: string }) {
+		loadXd(msg.content);
+		download_filename = msg.filename;
+	}
+
+	function handleXMLUpload(msg: { content: string, filename: string }) {
+		loadXML(msg.content);
+		download_filename = msg.filename.replace(".xml", ".xd");
+	}
+
+</script>
+
+<main class="max-w-none mx-auto lg:max-w-4xl">
+	<Instructions bind:visible="{ instructionsVisible }" />
+	<div class="flex flex-col items-start justify-start mt-4">
+		<div class="flex flex-row items-start justify-start">
+				<div class="flex flex-col">
+					<Input 
+						class="text-2xl font-bold mb-4 max-w-sm border-none border-b border-gray-300"
+						name="title" 
+						type="text" 
+						bind:value={data.title} 
+						placeholder="Title" 
+					/>
+					<SizeSlider bind:size="{size}" />
+					<Dropdown
+						label="Difficulty"
+						class="mb-4 max-w-sm border-none border-b border-gray-300"
+						options={difficulties.map(d => ({ value: d, label: d }))}
+						bind:value={data.difficulty}
+					/>
+					<Dropdown
+						label="Type"
+						class="mb-4 max-w-sm border-none border-b border-gray-300"
+						options={types.map(t => ({ value: t, label: t }))}
+						bind:value={data.type}
+					/>
+					<Input 
+						class="block mb-4 max-w-sm border-none border-b border-gray-300"
+						name="date" 
+						type="date" 
+						bind:value={data.date} 
+						placeholder="Publish Date" 
+					/>
+					<Input 
+						class="block mb-4 max-w-sm border-none border-b border-gray-300"
+						name="author" 
+						type="text" 
+						bind:value={data.author} 
+						placeholder="Author" 
+					/>
+					<Input 
+						class="block mb-4 max-w-sm border-none border-b border-gray-300"
+						name="editor" 
+						type="text" 
+						bind:value={data.editor} 
+						placeholder="Editor" 
+					/>
+					<Input 
+						class="block mb-4 max-w-sm border-none border-b border-gray-300"
+						name="copyright" 
+						type="text" 
+						bind:value={data.copyright} 
+						placeholder="Copyright" 
+					/>
+			</div>
+			<div class="ml-10 pl-10 border-l border-gray-300 flex flex-col">
+				<Patterns size="{size}" bind:grid="{grid}" />
+				<div class="flex flex-row items-start justify-start">
+					<input type="checkbox" name="symmetry" bind:checked={symmetry} class="mr-2">
+					<label for="symmetry">Symmetry</label>
+				</div>
+				<Print bind:state={localState} />
+				<div>
+					<label for="file" class="block mb-1">Upload XD file</label>
+					<FileUpload file_formats={[".xd"]} handleFileSelect="{ handleXDUpload }" />
+				</div>
+				<div>
+					<label for="file" class="block mb-1">Upload XML file</label>
+					<FileUpload file_formats={[".xml"]} handleFileSelect="{ handleXMLUpload }" />
+				</div>
+					<div>
+						<label for="download" class="block mb-1">Download</label>
+						<Input 
+							class="block mb-4 max-w-sm border-none border-b border-gray-300" 
+							name="download" 
+							bind:value={download_filename} 
+						/>
+						<Button 
+							variant="primary" 
+							onclick={downloadXD}
+						>
+							Download Crossword
+						</Button>
+					</div>
+			</div>
+		</div>
+		<div class="mt-4 mb-6 min-w-4xl" >
+			<div class="flex flex-row items-start justify-start">
+				<button onclick={() => editMode = !editMode} class="bg-blue-500 text-white px-4 py-2 rounded-md">{editMode ? "Edit Mode" : "Play Mode"}</button>
+			</div>
+			<!-- <div>
+				<Menu onReset="{ handleReset }" onInstructions="{ handleInstructions }" />
+			</div> -->
+			<CrosswordGrid crosswordData={data} editMode={editMode} debug={true} />
+		</div>
+		
+		<textarea id="xd" name="xd" class="w-full h-96 border border-gray-300 p-4 mt-4" bind:value="{xd}" style:display="{displayXd ? 'block' : 'none'}"></textarea>
+	</div>
+</main>

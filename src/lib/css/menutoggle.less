@@ -1,0 +1,82 @@
+.jxword-menu-toggle {
+    display: block;
+    position: relative;
+    margin-left: 3px;
+    top: 0px;
+    left: 0px;
+    z-index: 10;
+    -webkit-user-select: none;
+    user-select: none;
+    
+    a {
+        text-decoration: none;
+        color: #232323;
+        transition: color 0.3s ease;
+    }
+
+    li:hover {
+        background-color: #b8ddec;
+    }
+
+    .jxword-menu-break:hover {
+        background-color: white;
+    }
+
+    input {
+        display: block;
+        width: 40px;
+        height: 32px;
+        position: absolute;
+        top: -7px;
+        left: -5px;
+        cursor: pointer;
+        opacity: 0; /* hide this */
+        z-index: 2; /* and place it over the hamburger */
+        -webkit-touch-callout: none;
+    }
+
+    span {
+        display: block;
+        width: 18px;
+        height: 3px;
+        margin-bottom: 3px;
+        position: relative;
+        background: #000000;
+        border-radius: 0px;
+        z-index: 1;
+    }
+}
+
+.jxword-menu {
+    position: absolute;
+    width: 250px;
+    margin: -23px 0 0 -5px;
+    padding: 23px 10px 10px 10px;
+    background: #FFFFFF;
+    list-style-type: none;
+    -webkit-font-smoothing: antialiased;
+    transform-origin: 0% 0%;
+    opacity: 0;
+    visibility: hidden;
+    z-index: -1;
+    transition: transform 0.5s cubic-bezier(0.77,0.2,0.05,1.0),
+                opacity 0.55s ease,
+                visibility 0.55s ease;
+    border-radius: 2px;
+    border: 1px solid rgba(36, 36, 36, 0.5);
+    box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.5);
+}
+
+.jxword-menu li {
+    padding: 5px 5px;
+    font-size: 12pt;
+    pointer-events: auto;
+    z-index: 10;
+}
+
+.jxword-menu-toggle input:checked ~ ul {
+    transform: none;
+    opacity: 1;
+    visibility: visible;
+}
+
