@@ -10,6 +10,7 @@
 	import MobileKeyboard from './MobileKeyboard.svelte';
 	import MobileQuestionPanel from './MobileQuestionPanel.svelte';
 	import HamburgerMenu from './HamburgerMenu.svelte';
+	import { suggest } from '$lib/suggestions/suggest.js';
 
 	interface Props {
 		crosswordData: CrosswordType;
@@ -69,13 +70,13 @@
 		onprogress = () => {}
 	}: Props = $props();
 
-	let acrossQuestions: any[] = $derived.by(() => {
+	let acrossQuestions: CrosswordQuestionType[] = $derived.by(() => {
 		return crosswordData.clues.across.map((question: CrosswordQuestionType) => ({
 			...question,
 			correct: false
 		}));
 	});
-	let downQuestions: any[] = $derived.by(() => {
+	let downQuestions: CrosswordQuestionType[] = $derived.by(() => {
 		return crosswordData.clues.down.map((question: CrosswordQuestionType) => ({
 			...question,
 			correct: false
@@ -100,7 +101,8 @@
 		let questionNumber = 1;
 		let acrossQuestionNumber = 0;
 		let across: CrosswordBlockType[] = [];
-		let wordIndex = 0;
+		let letterIndex = 0;
+		let index = 0;
 		if (!crosswordData.grid || rows === 0 || cols === 0) return across;
 		for (let y = 0; y < rows; y++) {
 			for (let x = 0; x < cols; x++) {
@@ -121,10 +123,11 @@
 				}
 				if (isStartOfAcross(x, y)) {
 					acrossQuestionNumber = localQuestionNumber;
-					wordIndex = 0;
+					letterIndex = 0;
 				} else {
-					wordIndex++;
+					letterIndex++;
 				}
+				const acrossQuestion = crosswordData.clues.across[index];
 				const block: CrosswordBlockType = {
 					x: x,
 					y: y,
@@ -132,24 +135,33 @@
 					letter: crosswordData.grid[y][x],
 					current_letter: grid[y][x],
 					startOfWord: isStartOfAcross(x, y),
-					index: wordIndex,
-					question_number: `A${acrossQuestionNumber}`,
-					question_index: acrossQuestionNumber - 1,
-					question_clue: acrossQuestions[acrossQuestionNumber - 1]?.clue,
+					letter_index: letterIndex,
+					question_index: index,
+					question: {
+						direction: 0,
+						number: acrossQuestionNumber,
+						alpha_number: `A${acrossQuestionNumber}`,
+						clue: acrossQuestion?.clue || '',
+						answer: acrossQuestion?.answer || ''
+					},
 					correct: crosswordData.grid[y][x] === grid[y][x]
 				};
 				across.push(block);
+				if (isStartOfAcross(x, y)) {
+					index++;
+				}
 			}
 		}
 		return across;
 	});
 
 	let scalarDown: CrosswordBlockType[] = $derived.by(() => {
+		if (!crosswordData.grid || rows === 0 || cols === 0) return [];
 		let questionNumber = 1;
 		let downQuestionNumber = 0;
 		let down: CrosswordBlockType[] = [];
-		let wordIndex = 0;
-		if (!crosswordData.grid || rows === 0 || cols === 0) return down;
+		let letterIndex = 0;
+		let index = 0;
 		for (let y = 0; y < rows; y++) {
 			for (let x = 0; x < cols; x++) {
 				if (!crosswordData.grid[y] || crosswordData.grid[y][x] === '#') continue;
@@ -169,26 +181,33 @@
 				}
 				if (isStartOfDown(x, y)) {
 					downQuestionNumber = localQuestionNumber;
-					wordIndex = 0;
+					const downQuestion = crosswordData.clues.down[index];
+					letterIndex = 0;
 					while (
-						crosswordData.grid[y + wordIndex]?.[x] !== '#' &&
-						crosswordData.grid[y + wordIndex]?.[x] !== undefined
+						crosswordData.grid[y + letterIndex]?.[x] !== '#' &&
+						crosswordData.grid[y + letterIndex]?.[x] !== undefined
 					) {
 						down.push({
 							x: x,
-							y: y + wordIndex,
+							y: y + letterIndex,
 							direction: 0,
-							letter: crosswordData.grid[y + wordIndex][x],
-							current_letter: grid[y + wordIndex][x],
-							startOfWord: isStartOfDown(x, y + wordIndex),
-							index: wordIndex,
-							question_number: `D${downQuestionNumber}`,
-							question_index: downQuestionNumber - 1,
-							question_clue: downQuestions[downQuestionNumber - 1]?.clue,
-							correct: crosswordData.grid[y + wordIndex][x] === grid[y + wordIndex][x]
+							letter: crosswordData.grid[y + letterIndex][x],
+							current_letter: grid[y + letterIndex][x],
+							startOfWord: isStartOfDown(x, y + letterIndex),
+							letter_index: letterIndex,
+							question_index: index,
+							question: {
+								direction: 1,
+								number: downQuestionNumber,
+								clue: downQuestion?.clue || '',
+								answer: downQuestion?.answer || '',
+								alpha_number: `D${downQuestionNumber}`
+							},
+							correct: crosswordData.grid[y + letterIndex][x] === grid[y + letterIndex][x]
 						});
-						wordIndex++;
+						letterIndex++;
 					}
+					index++;
 				}
 			}
 		}
@@ -241,7 +260,7 @@
 		);
 		const cell = scalar.find((cell) => cell.x === col && cell.y === row);
 		if (!cell || !currentCellBlock) return backgroundColour;
-		if (cell.question_number === currentCellBlock.question_number) {
+		if (cell.question.alpha_number === currentCellBlock.question.alpha_number) {
 			return selectWordColour;
 		}
 		return backgroundColour;
@@ -259,7 +278,7 @@
 	let lastQuartile = $state(0);
 	let storageName = $state('');
 	let audio: HTMLAudioElement | null = $state(null);
-	let currentQuestion: any = $state(null);
+	let showSuggestions = $state(false);
 
 	// Print state
 	let printMode = $state('none' as 'none' | 'blank' | 'filled');
@@ -329,6 +348,34 @@
 		grid.some((col: string[]) => col.some((cell: string) => cell !== '' && cell !== '#'))
 	);
 
+	// Derive currentQuestion based on current cell and direction
+	const currentQuestion: CrosswordQuestionType | null = $derived.by(() => {
+		if (!editMode) return null;
+		const scalar = direction ? scalarDown : scalarAcross;
+		const currentCellBlock = scalar.find(
+			(cell) => cell.x === currentCell[0] && cell.y === currentCell[1]
+		);
+		if (!currentCellBlock) return null;
+		return currentCellBlock.question;
+	});
+
+	// Derive word suggestions based on current word pattern
+	const wordSuggestions = $derived.by(() => {
+		if (!currentQuestion || !editMode) return [];
+		if (isWordComplete()) return [];
+		const pattern = getCurrentWordPattern();
+		if (pattern.includes('?')) {
+			return suggest(pattern);
+		}
+		return [];
+	});
+
+	// Derive editClueText from current question's clue
+	const editClueText = $derived.by(() => {
+		if (!editMode || !currentQuestion) return '';
+		return currentQuestion.clue || '';
+	});
+
 	// Set CSS custom property for crossword height
 	// Swing back to this once we have made the whole thing declarative
 	// $effect(() => {
@@ -356,10 +403,11 @@
 		console.log('crosswordData:', $state.snapshot(crosswordData));
 		console.log('acrossQuestions:', $state.snapshot(acrossQuestions));
 		console.log('downQuestions:', $state.snapshot(downQuestions));
+		console.log('currentQuestion:', $state.snapshot(currentQuestion));
 		// console.log('localState:', $state.snapshot(localState));
 		// console.log('grid:', $state.snapshot(grid));
 		console.log('scalarAcross:', $state.snapshot(scalarAcross));
-		// console.log('scalarDown:', $state.snapshot(scalarDown));
+		console.log('scalarDown:', $state.snapshot(scalarDown));
 		// console.log('currentCell:', $state.snapshot(currentCell));
 	});
 
@@ -602,6 +650,12 @@
 		grid[currentCell[1]][currentCell[0]] = letter;
 		grid = [...grid];
 
+		// In edit mode, also update the underlying crosswordData grid
+		if (editMode) {
+			crosswordData.grid[currentCell[1]][currentCell[0]] = letter;
+			crosswordData = { ...crosswordData };
+		}
+
 		// Clear incorrect marking when user types a new letter
 		incorrectGrid[currentCell[1]][currentCell[0]] = false;
 
@@ -621,6 +675,9 @@
 		if (editMode) {
 			grid[currentCell[1]][currentCell[0]] = '';
 			grid = [...grid];
+			// Also update the underlying crosswordData grid
+			crosswordData.grid[currentCell[1]][currentCell[0]] = '';
+			crosswordData = { ...crosswordData };
 			moveToPreviousLetter();
 			return;
 		}
@@ -1094,7 +1151,7 @@
 		let startOfCurrentWord = findStartOfCurrentWord();
 		if (!startOfCurrentWord) return;
 		checkTile(startOfCurrentWord.x, startOfCurrentWord.y);
-		let i = startOfCurrentWord.index + 1;
+		let i = startOfCurrentWord.letter_index + 1;
 		while (scalar[i] && !scalar[i].startOfWord) {
 			checkTile(scalar[i].x, scalar[i].y);
 			i++;
@@ -1108,7 +1165,7 @@
 		let scalar = direction ? scalarDown : scalarAcross;
 		let cursor = scalar.find((cell) => cell.x === currentCell[0] && cell.y === currentCell[1]);
 		let startOfCurrentWord = null;
-		for (let x = cursor?.index ?? 0; x >= 0; x--) {
+		for (let x = cursor?.letter_index ?? 0; x >= 0; x--) {
 			if (scalar[x].startOfWord) {
 				startOfCurrentWord = scalar[x];
 				break;
@@ -1135,18 +1192,80 @@
 		return false; // If the cell is not a start of a down word, return false
 	}
 
-	function getCurrentQuestion() {
-		let cell = null;
-		let data = null;
-		if (!direction) {
-			cell = scalarAcross.find((cell) => cell.x === currentCell[0] && cell.y === currentCell[1]);
-			data = acrossQuestions;
-		} else {
-			cell = scalarDown.find((cell) => cell.x === currentCell[0] && cell.y === currentCell[1]);
-			data = downQuestions;
+	function getCurrentWordPattern() {
+		if (!currentQuestion) return '';
+		const scalar = direction ? scalarDown : scalarAcross;
+		const questionCells = scalar.filter((cell) => cell.question.number === currentQuestion.number);
+		return questionCells.map((cell) => cell.letter).join('');
+	}
+
+	function isWordComplete() {
+		const pattern = getCurrentWordPattern();
+		return !pattern.includes('?');
+	}
+
+	function updateClue(event: Event) {
+		if (!currentQuestion) return;
+		const textarea = event.target as HTMLTextAreaElement;
+		const newClue = textarea.value;
+		const questionList = direction ? crosswordData.clues.down : crosswordData.clues.across;
+		const questionIndex = questionList.findIndex(q => q.number === currentQuestion.number);
+		if (questionIndex !== -1) {
+			questionList[questionIndex].clue = newClue;
+			// Trigger reactivity
+			crosswordData = { ...crosswordData };
 		}
-		if (!cell) return null;
-		return data.find((q) => q.num === cell.question_number);
+	}
+
+	function fillWordFromSuggestion(suggestion: string) {
+		if (!currentQuestion) return;
+		const scalar = direction ? scalarDown : scalarAcross;
+		const questionCells = scalar.filter((cell) => cell.question.number === currentQuestion.number);
+		
+		suggestion = suggestion.toUpperCase();
+		if (suggestion.length !== questionCells.length) return;
+		
+		for (let i = 0; i < questionCells.length; i++) {
+			const cell = questionCells[i];
+			grid[cell.y][cell.x] = suggestion[i];
+		}
+		grid = [...grid];
+		
+		// Update the answer in the question
+		const questionList = direction ? crosswordData.clues.down : crosswordData.clues.across;
+		const questionIndex = questionList.findIndex(q => q.number === currentQuestion.number);
+		if (questionIndex !== -1) {
+			questionList[questionIndex].answer = suggestion;
+			crosswordData = { ...crosswordData };
+		}
+	}
+
+	function fillLetterAtIndex(index: number, letter: string) {
+		if (!currentQuestion) return;
+		const scalar = direction ? scalarDown : scalarAcross;
+		const questionCells = scalar.filter((cell) => cell.question.number === currentQuestion.number);
+		
+		if (index < 0 || index >= questionCells.length) return;
+		const cell = questionCells[index];
+		if (letter === '') {
+			grid[cell.y][cell.x] = '';
+		} else {
+			grid[cell.y][cell.x] = letter.toUpperCase();
+		}
+		grid = [...grid];
+		
+		// Update the underlying crosswordData grid as well
+		crosswordData.grid[cell.y][cell.x] = letter === '' ? '' : letter.toUpperCase();
+		crosswordData = { ...crosswordData };
+		
+		// Update answer
+		const pattern = getCurrentWordPattern();
+		const questionList = direction ? crosswordData.clues.down : crosswordData.clues.across;
+		const questionIndex = questionList.findIndex(q => q.number === currentQuestion.number);
+		if (questionIndex !== -1) {
+			questionList[questionIndex].answer = pattern;
+			crosswordData = { ...crosswordData };
+		}
 	}
 
 	function handleMobileKeyPress(event: CustomEvent) {
@@ -1196,7 +1315,7 @@
 			(cell) => cell.x === currentCell[0] && cell.y === currentCell[1]
 		);
 		if (!currentCellBlock) return false;
-		return currentCellBlock.question_number === question.number.toString();
+		return currentCellBlock.question.number === question.number;
 	}
 
 	function moveToQuestion(question: CrosswordQuestionType) {
@@ -1207,9 +1326,9 @@
 		// Find the question in the appropriate scalar array
 		let targetQuestion = null;
 		if (isAcross) {
-			targetQuestion = scalar.find((cell) => cell.question_number === question.number.toString());
+			targetQuestion = scalar.find((cell) => cell.question.number === question.number);
 		} else {
-			targetQuestion = scalar.find((cell) => cell.question_number === question.number.toString());
+			targetQuestion = scalar.find((cell) => cell.question.number === question.number);
 		}
 
 		if (!targetQuestion) return;
@@ -1221,7 +1340,7 @@
 		}
 
 		let questionCells = scalar.filter(
-			(cell) => cell.question_number === question.number.toString()
+			(cell) => cell.question.number === question.number
 		);
 
 		// Find the first available square (empty or incorrect)
@@ -1474,6 +1593,95 @@
 			<MobileKeyboard on:keypress={handleMobileKeyPress} />
 		</div>
 
+		{#if editMode && currentQuestion}
+			<div class="edit-panel">
+				<div class="edit-panel-header">
+					<div class="edit-panel-title">
+						<span class="question-number-badge">{currentQuestion.number}</span>
+						<span class="question-direction">{direction ? 'Down' : 'Across'}</span>
+					</div>
+				</div>
+				
+				<div class="edit-panel-content">
+					<div class="edit-clue-section">
+						<label class="edit-label" for="clue-input">Clue</label>
+						<textarea
+							id="clue-input"
+							class="clue-input"
+							value={editClueText}
+							oninput={updateClue}
+							placeholder="Enter the clue for this question..."
+							rows="3"
+						></textarea>
+					</div>
+					
+					{#if !isWordComplete()}
+						<div class="edit-word-section">
+							<div class="word-pattern-section">
+								<div class="edit-label">Word Pattern</div>
+								<div class="word-pattern">
+									{#each getCurrentWordPattern().split('') as letter, index}
+										<input
+											type="text"
+											class="word-letter-input"
+											class:empty={!letter || letter === '?'}
+											value={letter === '?' ? '' : letter}
+											maxlength="1"
+											oninput={(e) => {
+												const value = (e.target as HTMLInputElement).value.toUpperCase();
+												if (value && /^[A-Z]$/.test(value)) {
+													fillLetterAtIndex(index, value);
+												} else if (value === '') {
+													fillLetterAtIndex(index, '');
+												}
+											}}
+											onkeydown={(e) => {
+												if (e.key === 'ArrowLeft' && index > 0) {
+													e.preventDefault();
+													(e.currentTarget.previousElementSibling as HTMLInputElement)?.focus();
+												} else if (e.key === 'ArrowRight' && index < getCurrentWordPattern().length - 1) {
+													e.preventDefault();
+													(e.currentTarget.nextElementSibling as HTMLInputElement)?.focus();
+												} else if (e.key === 'Backspace' && !letter && index > 0) {
+													e.preventDefault();
+													(e.currentTarget.previousElementSibling as HTMLInputElement)?.focus();
+												}
+											}}
+										/>
+									{/each}
+								</div>
+							</div>
+							
+							{#if wordSuggestions.length > 0}
+								<div class="suggestions-section">
+									<div class="edit-label">Suggestions</div>
+									<div class="suggestions-list">
+										{#each wordSuggestions as suggestion}
+											<button
+												class="suggestion-button"
+												onclick={() => fillWordFromSuggestion(suggestion)}
+											>
+												{suggestion.toUpperCase()}
+											</button>
+										{/each}
+									</div>
+								</div>
+							{/if}
+						</div>
+					{:else}
+						<div class="word-complete-indicator">
+							<div class="complete-badge">
+								<svg class="check-icon" viewBox="0 0 20 20" fill="currentColor">
+									<path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" />
+								</svg>
+								Word Complete: {getCurrentWordPattern()}
+							</div>
+						</div>
+					{/if}
+				</div>
+			</div>
+		{/if}
+
 		<div class="question-container desktop-only">
 			<div class="questions-across" bind:this={questionsAcrossContainer}>
 				<h4>Across</h4>
@@ -1484,9 +1692,9 @@
 								class="questions-list-item"
 								class:active={isQuestionActive(question)}
 								onclick={() => moveToQuestion(question)}
-								aria-label="Go to question {question.number.replace(/^\D/, '')}"
+								aria-label="Go to question {question.alpha_number}"
 							>
-								<span class="questions-list-item-num">{question.number.replace(/^\D/, '')}</span>
+								<span class="questions-list-item-num">{question.alpha_number}</span>
 								<span class="questions-list-item-question">{question.clue}</span>
 							</button>
 						</li>
@@ -1502,9 +1710,9 @@
 								class="questions-list-item"
 								class:active={isQuestionActive(question)}
 								onclick={() => moveToQuestion(question)}
-								aria-label="Go to question {question.number.replace(/^\D/, '')}"
+								aria-label="Go to question {question.alpha_number}"
 							>
-								<span class="questions-list-item-num">{question.number.replace(/^\D/, '')}</span>
+								<span class="questions-list-item-num">{question.alpha_number}</span>
 								<span class="questions-list-item-question">{question.clue}</span>
 							</button>
 						</li>
@@ -2543,6 +2751,232 @@
 
 		.questions-down {
 			page-break-before: avoid;
+		}
+	}
+
+	.edit-panel {
+		position: fixed;
+		bottom: 0;
+		left: 0;
+		right: 0;
+		background: white;
+		border-top: 2px solid #e5e7eb;
+		box-shadow: 0 -4px 6px -1px rgba(0, 0, 0, 0.1), 0 -2px 4px -1px rgba(0, 0, 0, 0.06);
+		z-index: 100;
+		max-height: 50vh;
+		display: flex;
+		flex-direction: column;
+		animation: slideUp 0.3s ease-out;
+	}
+
+	@keyframes slideUp {
+		from {
+			transform: translateY(100%);
+		}
+		to {
+			transform: translateY(0);
+		}
+	}
+
+	.edit-panel-header {
+		padding: 1rem 1.5rem;
+		border-bottom: 1px solid #e5e7eb;
+		background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+		color: white;
+	}
+
+	.edit-panel-title {
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
+		font-weight: 600;
+		font-size: 1rem;
+	}
+
+	.question-number-badge {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 2rem;
+		height: 2rem;
+		background: rgba(255, 255, 255, 0.2);
+		border-radius: 0.375rem;
+		font-weight: bold;
+		font-size: 0.875rem;
+		backdrop-filter: blur(4px);
+	}
+
+	.question-direction {
+		opacity: 0.95;
+		font-size: 0.875rem;
+	}
+
+	.edit-panel-content {
+		padding: 1.5rem;
+		overflow-y: auto;
+		flex: 1;
+	}
+
+	.edit-clue-section {
+		margin-bottom: 1.5rem;
+	}
+
+	.edit-word-section {
+		margin-top: 1.5rem;
+		padding-top: 1.5rem;
+		border-top: 1px solid #e5e7eb;
+	}
+
+	.edit-label {
+		display: block;
+		font-weight: 600;
+		font-size: 0.875rem;
+		color: #374151;
+		margin-bottom: 0.5rem;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+	}
+
+	.clue-input {
+		width: 100%;
+		padding: 0.75rem;
+		border: 2px solid #e5e7eb;
+		border-radius: 0.5rem;
+		font-size: 0.9375rem;
+		font-family: inherit;
+		line-height: 1.5;
+		resize: vertical;
+		transition: border-color 0.2s, box-shadow 0.2s;
+	}
+
+	.clue-input:focus {
+		outline: none;
+		border-color: #667eea;
+		box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+	}
+
+	.word-pattern-section {
+		margin-bottom: 1.5rem;
+	}
+
+	.word-pattern {
+		display: flex;
+		gap: 0.5rem;
+		flex-wrap: wrap;
+		align-items: center;
+	}
+
+	.word-letter-input {
+		width: 3rem;
+		height: 3rem;
+		text-align: center;
+		font-size: 1.25rem;
+		font-weight: 600;
+		border: 2px solid #e5e7eb;
+		border-radius: 0.5rem;
+		background: white;
+		transition: all 0.2s;
+		font-family: 'Courier New', monospace;
+	}
+
+	.word-letter-input:focus {
+		outline: none;
+		border-color: #667eea;
+		box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+		transform: scale(1.05);
+	}
+
+	.word-letter-input.empty {
+		background: #f9fafb;
+		border-style: dashed;
+		border-color: #d1d5db;
+	}
+
+	.word-letter-input.empty:focus {
+		background: white;
+		border-style: solid;
+		border-color: #667eea;
+	}
+
+	.suggestions-section {
+		margin-top: 1rem;
+	}
+
+	.suggestions-list {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.5rem;
+	}
+
+	.suggestion-button {
+		padding: 0.5rem 1rem;
+		background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+		color: white;
+		border: none;
+		border-radius: 0.375rem;
+		font-weight: 600;
+		font-size: 0.875rem;
+		cursor: pointer;
+		transition: all 0.2s;
+		box-shadow: 0 2px 4px rgba(102, 126, 234, 0.2);
+		font-family: 'Courier New', monospace;
+		letter-spacing: 0.05em;
+	}
+
+	.suggestion-button:hover {
+		transform: translateY(-2px);
+		box-shadow: 0 4px 8px rgba(102, 126, 234, 0.3);
+	}
+
+	.suggestion-button:active {
+		transform: translateY(0);
+	}
+
+	.word-complete-indicator {
+		margin-top: 1rem;
+		padding-top: 1rem;
+		border-top: 1px solid #e5e7eb;
+	}
+
+	.complete-badge {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.5rem;
+		padding: 0.75rem 1rem;
+		background: #d1fae5;
+		color: #065f46;
+		border-radius: 0.5rem;
+		font-weight: 600;
+		font-size: 0.875rem;
+		font-family: 'Courier New', monospace;
+		letter-spacing: 0.05em;
+	}
+
+	.check-icon {
+		width: 1.25rem;
+		height: 1.25rem;
+		color: #059669;
+	}
+
+	@media print {
+		.edit-panel {
+			display: none !important;
+		}
+	}
+
+	@media (max-width: 768px) {
+		.edit-panel {
+			max-height: 60vh;
+		}
+
+		.edit-panel-content {
+			padding: 1rem;
+		}
+
+		.word-letter-input {
+			width: 2.5rem;
+			height: 2.5rem;
+			font-size: 1rem;
 		}
 	}
 </style>

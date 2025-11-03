@@ -15,10 +15,10 @@ export type CrosswordData = {
 
 export type CrosswordQuestion = {
     direction: number; // 0 = across, 1 = down
-    number: number;
-    clue: string;
-    answer: string;
-    correct?: boolean;
+    number?: number;
+    clue?: string;
+    answer?: string;
+    alpha_number?: string;
 }
 
 export type CrosswordBlock = {
@@ -28,10 +28,9 @@ export type CrosswordBlock = {
     letter: string;
     current_letter?: string;
     startOfWord: boolean;
-    index: number;
-    question_number: string;
+    letter_index: number;
     question_index: number;
-    question_clue: string;
+    question: CrosswordQuestion;
     correct: boolean;
 }
 
