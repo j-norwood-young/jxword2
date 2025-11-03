@@ -590,6 +590,19 @@
 	// Event handlers
 	function handleKeyPress(event: KeyboardEvent) {
 		if (event.metaKey) return;
+		
+		// Ignore keyboard events when focus is on an input, textarea, or other editable element
+		const activeElement = document.activeElement;
+		if (activeElement) {
+			const tagName = activeElement.tagName;
+			const isEditable = (activeElement instanceof HTMLElement && activeElement.isContentEditable) ||
+				activeElement.closest('dialog') ||
+				activeElement.closest('[role="dialog"]');
+			if (tagName === 'INPUT' || tagName === 'TEXTAREA' || isEditable) {
+				return;
+			}
+		}
+		
 		const printable = event.key.length === 1 && /^[a-zA-Z]$/.test(event.key);
 
 		if (isPaused) return;
@@ -1208,7 +1221,8 @@
 		if (!currentQuestion) return;
 		const textarea = event.target as HTMLTextAreaElement;
 		const newClue = textarea.value;
-		const questionList = direction ? crosswordData.clues.down : crosswordData.clues.across;
+		const isDown = direction === 1;
+		const questionList = isDown ? crosswordData.clues.down : crosswordData.clues.across;
 		const questionIndex = questionList.findIndex(q => q.number === currentQuestion.number);
 		if (questionIndex !== -1) {
 			questionList[questionIndex].clue = newClue;
