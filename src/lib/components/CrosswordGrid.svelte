@@ -89,8 +89,8 @@
 			row.map((cell: string) => (cell === '#' ? '#' : ''))
 		);
 	});
-	let rows = $derived(grid.length);
-	let cols = $derived(grid[0].length);
+	let rows = $derived(grid.length || 0);
+	let cols = $derived(grid[0]?.length || 0);
 	let cellWidth = $derived(width / cols);
 	let cellHeight = $derived(height / rows);
 	let fontSize = $derived(cellWidth * fontRatio);
@@ -101,33 +101,22 @@
 		let acrossQuestionNumber = 0;
 		let across: CrosswordBlockType[] = [];
 		let wordIndex = 0;
+		if (!crosswordData.grid || rows === 0 || cols === 0) return across;
 		for (let y = 0; y < rows; y++) {
 			for (let x = 0; x < cols; x++) {
-				if (crosswordData.grid[x][y] === '#') continue;
+				if (!crosswordData.grid[y] || crosswordData.grid[y][x] === '#') continue;
 				let localQuestionNumber = questionNumber;
 				if (isStartOfAcross(x, y) || isStartOfDown(x, y)) {
 					questionNumber++;
 				}
 				// If it's only one cell with a # on the left and right, or a # on the left and wall on the right, or a # on the right and wall on the left, then it's a start of an across word
-				if (
-					x === 0 &&
-					crosswordData.grid[x + 1][y] === '#' &&
-					crosswordData.grid[x + 2][y] === '#'
-				) {
+				if (x === 0 && crosswordData.grid[y]?.[x + 1] === '#') {
 					continue;
 				}
-				if (
-					x === cols - 1 &&
-					crosswordData.grid[x - 1][y] === '#' &&
-					crosswordData.grid[x - 2][y] === '#'
-				) {
+				if (x === cols - 1 && crosswordData.grid[y]?.[x - 1] === '#') {
 					continue;
 				}
-				if (
-					x === 0 &&
-					crosswordData.grid[x + 1][y] === '#' &&
-					crosswordData.grid[x + 2][y] === '#'
-				) {
+				if (crosswordData.grid[y]?.[x - 1] === '#' && crosswordData.grid[y]?.[x + 1] === '#') {
 					continue;
 				}
 				if (isStartOfAcross(x, y)) {
@@ -140,13 +129,14 @@
 					x: x,
 					y: y,
 					direction: 0,
-					letter: crosswordData.grid[x][y],
-					current_letter: grid[x][y],
+					letter: crosswordData.grid[y][x],
+					current_letter: grid[y][x],
 					startOfWord: isStartOfAcross(x, y),
 					index: wordIndex,
 					question_number: `A${acrossQuestionNumber}`,
-					question_clue: acrossQuestions[localQuestionNumber - 1]?.clue,
-					correct: crosswordData.grid[x][y] === grid[x][y]
+					question_index: acrossQuestionNumber - 1,
+					question_clue: acrossQuestions[acrossQuestionNumber - 1]?.clue,
+					correct: crosswordData.grid[y][x] === grid[y][x]
 				};
 				across.push(block);
 			}
@@ -159,41 +149,43 @@
 		let downQuestionNumber = 0;
 		let down: CrosswordBlockType[] = [];
 		let wordIndex = 0;
+		if (!crosswordData.grid || rows === 0 || cols === 0) return down;
 		for (let y = 0; y < rows; y++) {
 			for (let x = 0; x < cols; x++) {
-				if (crosswordData.grid[x][y] === '#') continue;
+				if (!crosswordData.grid[y] || crosswordData.grid[y][x] === '#') continue;
 				let localQuestionNumber = questionNumber;
 				if (isStartOfDown(x, y) || isStartOfAcross(x, y)) {
 					questionNumber++;
 				}
 				// If it's only one cell with a # on the top and bottom, or a # on the top and wall on the bottom, or a # on the bottom and wall on the top, then it's a start of an across word
-				if (y === 0 && crosswordData.grid[x][y + 1] === '#') {
+				if (y === 0 && crosswordData.grid[y + 1]?.[x] === '#') {
 					continue;
 				}
-				if (y === rows - 1 && crosswordData.grid[x][y - 1] === '#') {
+				if (y === rows - 1 && crosswordData.grid[y - 1]?.[x] === '#') {
 					continue;
 				}
-				if (crosswordData.grid[x][y - 1] === '#' && crosswordData.grid[x][y + 1] === '#') {
+				if (crosswordData.grid[y - 1]?.[x] === '#' && crosswordData.grid[y + 1]?.[x] === '#') {
 					continue;
 				}
 				if (isStartOfDown(x, y)) {
 					downQuestionNumber = localQuestionNumber;
 					wordIndex = 0;
 					while (
-						crosswordData.grid[x][y + wordIndex] !== '#' &&
-						crosswordData.grid[x][y + wordIndex] !== undefined
+						crosswordData.grid[y + wordIndex]?.[x] !== '#' &&
+						crosswordData.grid[y + wordIndex]?.[x] !== undefined
 					) {
 						down.push({
 							x: x,
 							y: y + wordIndex,
 							direction: 0,
-							letter: crosswordData.grid[x][y + wordIndex],
-							current_letter: grid[x][y + wordIndex],
+							letter: crosswordData.grid[y + wordIndex][x],
+							current_letter: grid[y + wordIndex][x],
 							startOfWord: isStartOfDown(x, y + wordIndex),
 							index: wordIndex,
 							question_number: `D${downQuestionNumber}`,
-							question_clue: downQuestions[localQuestionNumber - 1]?.clue,
-							correct: crosswordData.grid[x][y + wordIndex] === grid[x][y + wordIndex]
+							question_index: downQuestionNumber - 1,
+							question_clue: downQuestions[downQuestionNumber - 1]?.clue,
+							correct: crosswordData.grid[y + wordIndex][x] === grid[y + wordIndex][x]
 						});
 						wordIndex++;
 					}
@@ -206,10 +198,10 @@
 	// Our local state
 	let time_taken = $state(0);
 	let incorrectGrid: boolean[][] = $derived.by(() =>
-		new Array(cols).fill(false).map(() => new Array(rows).fill(false))
+		new Array(rows).fill(false).map(() => new Array(cols).fill(false))
 	);
 	let correctGrid: boolean[][] = $derived.by(() =>
-		new Array(cols).fill(false).map(() => new Array(rows).fill(false))
+		new Array(rows).fill(false).map(() => new Array(cols).fill(false))
 	);
 	let direction = $state(0);
 	let currentCell = $state([0, 0]);
@@ -237,15 +229,17 @@
 
 	// Cell fill colors for reactivity
 	function cellFill(col: number, row: number): string {
-		if (crosswordData.grid[col][row] === '#') {
+		if (crosswordData.grid[row][col] === '#') {
 			return fillColour;
 		}
 		if (col === currentCell[0] && row === currentCell[1]) {
 			return selectCellColour;
 		}
 		let scalar = direction ? scalarDown : scalarAcross;
-		const currentCellBlock = scalar.find((cell) => cell.x === currentCell[0] && cell.y === currentCell[1]);
-		const cell = scalar.find(cell => cell.x === col && cell.y === row);
+		const currentCellBlock = scalar.find(
+			(cell) => cell.x === currentCell[0] && cell.y === currentCell[1]
+		);
+		const cell = scalar.find((cell) => cell.x === col && cell.y === row);
 		if (!cell || !currentCellBlock) return backgroundColour;
 		if (cell.question_number === currentCellBlock.question_number) {
 			return selectWordColour;
@@ -344,7 +338,8 @@
 	// });
 
 	// Focus the play button when paused overlay is shown
-	$effect(() => { // This shouldn't be an effect
+	$effect(() => {
+		// This shouldn't be an effect
 		if (showOverlay && overlayType === 'paused' && typeof window !== 'undefined') {
 			setTimeout(() => {
 				const playButton = document.querySelector('.cool-play-button') as HTMLButtonElement;
@@ -363,7 +358,7 @@
 		console.log('downQuestions:', $state.snapshot(downQuestions));
 		// console.log('localState:', $state.snapshot(localState));
 		// console.log('grid:', $state.snapshot(grid));
-		// console.log('scalarAcross:', $state.snapshot(scalarAcross));
+		console.log('scalarAcross:', $state.snapshot(scalarAcross));
 		// console.log('scalarDown:', $state.snapshot(scalarDown));
 		// console.log('currentCell:', $state.snapshot(currentCell));
 	});
@@ -409,7 +404,7 @@
 		let s = '';
 		for (let row = 0; row < rows; row++) {
 			for (let col = 0; col < cols; col++) {
-				s += matrix[col][row];
+				s += matrix[row][col];
 			}
 		}
 		let hash = 0,
@@ -499,19 +494,19 @@
 	}
 
 	function updateLetterClasses() {
-		const localLetterClasses = new Array(cols)
+		const localLetterClasses = new Array(rows)
 			.fill('')
-			.map(() => new Array(rows).fill('letter-text'));
-		for (let col = 0; col < cols; col++) {
-			for (let row = 0; row < rows; row++) {
-				if (grid[col][row] !== '#') {
+			.map(() => new Array(cols).fill('letter-text'));
+		for (let row = 0; row < rows; row++) {
+			for (let col = 0; col < cols; col++) {
+				if (grid[row][col] !== '#') {
 					let classes = ['letter-text'];
-					if (correctGrid[col][row]) {
+					if (correctGrid[row][col]) {
 						classes.push('correct');
-					} else if (incorrectGrid && incorrectGrid[col][row] && grid[col][row] !== '') {
+					} else if (incorrectGrid && incorrectGrid[row][col] && grid[row][col] !== '') {
 						classes.push('incorrect');
 					}
-					localLetterClasses[col][row] = classes.join(' ');
+					localLetterClasses[row][col] = classes.join(' ');
 				}
 			}
 		}
@@ -525,21 +520,21 @@
 	}
 
 	function checkPuzzle() {
-		for (let x = 0; x < correctGrid.length; x++) {
-			for (let y = 0; y < correctGrid[x].length; y++) {
-				checkTile(x, y);
+		for (let row = 0; row < rows; row++) {
+			for (let col = 0; col < cols; col++) {
+				checkTile(col, row);
 			}
 		}
 	}
 
 	function checkTile(x: number, y: number) {
-		if (crosswordData.grid[x][y] === '#') return;
-		if (correctGrid[x][y]) return;
-		if (crosswordData.grid[x][y] === grid[x][y]) {
-			correctGrid[x][y] = true;
-			incorrectGrid[x][y] = false; // Clear incorrect if it was marked
-		} else if (grid[x][y] && grid[x][y] !== '') {
-			incorrectGrid[x][y] = true;
+		if (crosswordData.grid[y][x] === '#') return;
+		if (correctGrid[y][x]) return;
+		if (crosswordData.grid[y][x] === grid[y][x]) {
+			correctGrid[y][x] = true;
+			incorrectGrid[y][x] = false; // Clear incorrect if it was marked
+		} else if (grid[y][x] && grid[y][x] !== '') {
+			incorrectGrid[y][x] = true;
 		}
 		// updateLetterClasses();
 	}
@@ -556,7 +551,7 @@
 			typeLetter(letter);
 			return;
 		}
-		if (editMode && [".", "#"].includes(event.key)) {
+		if (editMode && ['.', '#'].includes(event.key)) {
 			toggleCell(currentCell[0], currentCell[1]);
 			return;
 		}
@@ -598,17 +593,17 @@
 	}
 
 	function typeLetter(letter: string) {
-		if (!editMode && correctGrid[currentCell[0]][currentCell[1]]) {
+		if (!editMode && correctGrid[currentCell[1]][currentCell[0]]) {
 			moveToNextCell();
 			return;
 		}
 
-		const hasLetter: boolean = !!grid[currentCell[0]][currentCell[1]];
-		grid[currentCell[0]][currentCell[1]] = letter;
+		const hasLetter: boolean = !!grid[currentCell[1]][currentCell[0]];
+		grid[currentCell[1]][currentCell[0]] = letter;
 		grid = [...grid];
 
 		// Clear incorrect marking when user types a new letter
-		incorrectGrid[currentCell[0]][currentCell[1]] = false;
+		incorrectGrid[currentCell[1]][currentCell[0]] = false;
 
 		// setScalars(letter, currentCell[0], currentCell[1]);
 		checkWin();
@@ -624,24 +619,24 @@
 
 	function deleteLetter() {
 		if (editMode) {
-			grid[currentCell[0]][currentCell[1]] = '';
+			grid[currentCell[1]][currentCell[0]] = '';
 			grid = [...grid];
 			moveToPreviousLetter();
 			return;
 		}
-		incorrectGrid[currentCell[0]][currentCell[1]] = false;
+		incorrectGrid[currentCell[1]][currentCell[0]] = false;
 
-		if (correctGrid[currentCell[0]][currentCell[1]]) {
+		if (correctGrid[currentCell[1]][currentCell[0]]) {
 			moveToPreviousLetter();
 			return;
 		}
 
-		if (!grid[currentCell[0]][currentCell[1]]) {
+		if (!grid[currentCell[1]][currentCell[0]]) {
 			moveToPreviousLetter();
-			if (correctGrid[currentCell[0]][currentCell[1]]) return;
+			if (correctGrid[currentCell[1]][currentCell[0]]) return;
 		}
 
-		grid[currentCell[0]][currentCell[1]] = '';
+		grid[currentCell[1]][currentCell[0]] = '';
 		grid = [...grid];
 		saveGameState();
 		calculateComplete();
@@ -662,8 +657,8 @@
 
 	// Helper function to check if a cell should be considered "blank" for navigation
 	function isCellBlank(x: number, y: number) {
-		const hasLetter = grid[x][y] !== '';
-		const isIncorrect = incorrectGrid && incorrectGrid[x][y];
+		const hasLetter = grid[y][x] !== '';
+		const isIncorrect = incorrectGrid && incorrectGrid[y][x];
 		return !hasLetter || isIncorrect;
 	}
 
@@ -681,7 +676,7 @@
 					break;
 				}
 			}
-		} else {	
+		} else {
 			for (let i = cursor + 1; i < scalar.length; i++) {
 				if (isCellBlank(scalar[i].x, scalar[i].y)) {
 					nextCell = scalar[i];
@@ -699,7 +694,7 @@
 				return;
 			}
 			const nextBlank = otherScalar.findIndex((cell) => isCellBlank(cell.x, cell.y));
-			if (nextBlank !== -1) { 
+			if (nextBlank !== -1) {
 				currentCell = [otherScalar[nextBlank].x, otherScalar[nextBlank].y];
 				direction = direction ? 0 : 1;
 			} else {
@@ -710,10 +705,12 @@
 
 	function moveToPreviousLetter() {
 		let scalar = direction ? scalarDown : scalarAcross;
-		const currentCellBlock = scalar.find((cell) => cell.x === currentCell[0] && cell.y === currentCell[1]);
-		const cell = scalar.find(cell => cell.x === currentCell[0] && cell.y === currentCell[1]);
+		const currentCellBlock = scalar.find(
+			(cell) => cell.x === currentCell[0] && cell.y === currentCell[1]
+		);
+		const cell = scalar.find((cell) => cell.x === currentCell[0] && cell.y === currentCell[1]);
 		if (!cell || !currentCellBlock) return backgroundColour;
-		let cursor = scalar.findIndex(cell => cell.x === currentCell[0] && cell.y === currentCell[1]);
+		let cursor = scalar.findIndex((cell) => cell.x === currentCell[0] && cell.y === currentCell[1]);
 		if (cursor > 0) {
 			currentCell = [scalar[cursor - 1].x, scalar[cursor - 1].y];
 		} else {
@@ -732,7 +729,7 @@
 			if (scalar[i].startOfWord) {
 				nextCell = scalar[i];
 				break;
-			}	
+			}
 		}
 
 		if (nextCell) {
@@ -819,7 +816,9 @@
 	function checkWin() {
 		if (editMode) return;
 		// If all "correct" in our scalars, we win
-		let allCorrect = scalarAcross.every((scalar) => scalar.correct) && scalarDown.every((scalar) => scalar.correct);
+		let allCorrect =
+			scalarAcross.every((scalar) => scalar.correct) &&
+			scalarDown.every((scalar) => scalar.correct);
 		if (allCorrect) {
 			displayWin();
 			return;
@@ -892,11 +891,11 @@
 	function calculateComplete() {
 		let filled = 0;
 		let total_cells = 0;
-		for (let col = 0; col < cols; col++) {
-			for (let row = 0; row < rows; row++) {
-				if (grid[col][row] !== '#') {
+		for (let row = 0; row < rows; row++) {
+			for (let col = 0; col < cols; col++) {
+				if (grid[row][col] !== '#') {
 					total_cells++;
-					if (grid[col][row]) {
+					if (grid[row][col]) {
 						filled++;
 					}
 				}
@@ -992,15 +991,16 @@
 
 	function handleCellDoubleClick(col: number, row: number) {
 		if (!editMode) return;
+		if (crosswordData.grid[row][col] !== '' && crosswordData.grid[row][col] !== '#') return;
 		toggleCell(col, row);
 	}
 
 	function toggleCell(x: number, y: number) {
 		if (!editMode) return;
-		if (crosswordData.grid[x][y] === '#') {
-			crosswordData.grid[x][y] = '';
+		if (crosswordData.grid[y][x] === '#') {
+			crosswordData.grid[y][x] = '';
 		} else {
-			crosswordData.grid[x][y] = '#';
+			crosswordData.grid[y][x] = '#';
 		}
 		grid = [...crosswordData.grid];
 	}
@@ -1118,20 +1118,20 @@
 	}
 
 	function isStartOfAcross(x: number, y: number) {
-		if (crosswordData.grid[x][y] === '#') return false; // If the cell is a wall, return false
-		if (!crosswordData.grid[x + 1]?.[y] === undefined) return false; // If the cell is the last column, return false
-		if (x === 0 && crosswordData.grid[x + 1]?.[y] == '#') return false; // If the cell is the first column and the cell to the right is a wall, return false
-		if (crosswordData.grid[x + 1]?.[y] === '#') return false; // If the cell to the right is a wall, return false
-		if (x === 0 || crosswordData.grid[x - 1]?.[y] == '#') return true; // If the cell is the first row or the cell to the left is a wall, return true
+		if (crosswordData.grid[y][x] === '#') return false; // If the cell is a wall, return false
+		if (crosswordData.grid[y]?.[x + 1] === undefined) return false; // If the cell is the last column, return false
+		if (x === 0 && crosswordData.grid[y]?.[x + 1] == '#') return false; // If the cell is the first column and the cell to the right is a wall, return false
+		if (crosswordData.grid[y]?.[x + 1] === '#') return false; // If the cell to the right is a wall, return false
+		if (x === 0 || crosswordData.grid[y]?.[x - 1] == '#') return true; // If the cell is the first column or the cell to the left is a wall, return true
 		return false; // If the cell is not a start of an across word, return false
 	}
 
 	function isStartOfDown(x: number, y: number) {
-		if (crosswordData.grid[x]?.[y] === '#') return false; // If the cell is a wall, return false
-		if (!crosswordData.grid[x]?.[y + 1] === undefined) return false; // If the cell is the last row, return false
-		if (y === 0 && crosswordData.grid[x]?.[y + 1] == '#') return false; // If the cell is the first row and the cell below is a wall, return false
-		if (crosswordData.grid[x]?.[y + 1] === '#') return false; // If the cell below is a wall, return false
-		if (y === 0 || crosswordData.grid[x]?.[y - 1] == '#') return true; // If the cell is the first row or the cell above is a wall, return true
+		if (crosswordData.grid[y]?.[x] === '#') return false; // If the cell is a wall, return false
+		if (crosswordData.grid[y + 1]?.[x] === undefined) return false; // If the cell is the last row, return false
+		if (y === 0 && crosswordData.grid[y + 1]?.[x] == '#') return false; // If the cell is the first row and the cell below is a wall, return false
+		if (crosswordData.grid[y + 1]?.[x] === '#') return false; // If the cell below is a wall, return false
+		if (y === 0 || crosswordData.grid[y - 1]?.[x] == '#') return true; // If the cell is the first row or the cell above is a wall, return true
 		return false; // If the cell is not a start of a down word, return false
 	}
 
@@ -1160,7 +1160,7 @@
 
 	function getCellClass(x: number, y: number) {
 		let classes = ['cell'];
-		if (crosswordData.grid[x][y] === '#') {
+		if (crosswordData.grid[y][x] === '#') {
 			classes.push('blank');
 		} else {
 			classes.push('letter');
@@ -1192,44 +1192,43 @@
 
 	function isQuestionActive(question: CrosswordQuestionType) {
 		const scalar = direction ? scalarDown : scalarAcross;
-		const currentCellBlock = scalar.find((cell) => cell.x === currentCell[0] && cell.y === currentCell[1]);	
+		const currentCellBlock = scalar.find(
+			(cell) => cell.x === currentCell[0] && cell.y === currentCell[1]
+		);
 		if (!currentCellBlock) return false;
 		return currentCellBlock.question_number === question.number.toString();
 	}
 
-	function moveToQuestion(question: any) {
+	function moveToQuestion(question: CrosswordQuestionType) {
 		// Determine if this is an across or down question
-		const isAcross = question.num.startsWith('A');
+		const isAcross = question.direction === 0;
+		const scalar = isAcross ? scalarAcross : scalarDown;
 
 		// Find the question in the appropriate scalar array
 		let targetQuestion = null;
 		if (isAcross) {
-			targetQuestion = acrossQuestions.find((q) => q.question_number === question.question_number);
+			targetQuestion = scalar.find((cell) => cell.question_number === question.number.toString());
 		} else {
-			targetQuestion = downQuestions.find((q) => q.question_number === question.question_number);
+			targetQuestion = scalar.find((cell) => cell.question_number === question.number.toString());
 		}
 
 		if (!targetQuestion) return;
 
-		// Find all cells for this question in the scalar arrays
-		let questionCells = [];
-		if (isAcross) {
-			questionCells = scalarAcross.filter(
-				(cell) => cell.question_number === question.question_number
-			);
-		} else {
-			questionCells = scalarDown.filter(
-				(cell) => cell.question_number === question.question_number
-			);
+		if (editMode) {
+			currentCell = [targetQuestion.x, targetQuestion.y];
+			direction = question.direction;
+			return;
 		}
 
-		if (questionCells.length === 0) return;
+		let questionCells = scalar.filter(
+			(cell) => cell.question_number === question.number.toString()
+		);
 
 		// Find the first available square (empty or incorrect)
 		let targetCell = null;
 		for (let cell of questionCells) {
-			const hasLetter = grid[cell.x][cell.y] !== '';
-			const isIncorrect = incorrectGrid && incorrectGrid[cell.x][cell.y];
+			const hasLetter = grid[cell.y][cell.x] !== '';
+			const isIncorrect = incorrectGrid && incorrectGrid[cell.y][cell.x];
 
 			// Available if: empty, or incorrect (can be overwritten)
 			if (!hasLetter || isIncorrect) {
@@ -1414,8 +1413,8 @@
 										ondblclick={() => handleCellDoubleClick(col, row)}
 										onkeydown={(e) => e.key === 'Enter' && handleCellClick(col, row)}
 									/>
-									{#if grid[col][row] !== '#'}
-										{#if incorrectGrid && incorrectGrid[col]?.[row] && grid[col][row] !== ''}
+									{#if grid[row][col] !== '#'}
+										{#if incorrectGrid && incorrectGrid[row]?.[col] && grid[row][col] !== ''}
 											<line
 												class="incorrect-line"
 												x1={cellWidth * col + margin + cellWidth * 0.1}
@@ -1427,13 +1426,13 @@
 											/>
 										{/if}
 										<text
-											class={letterClasses[col]?.[row]}
+											class={letterClasses[row]?.[col]}
 											x={cellWidth * col + margin + cellWidth / 2}
 											y={cellHeight * row + margin + fontSize - margin}
 											text-anchor="middle"
 											font-size={fontSize}
 										>
-											{printMode === 'blank' ? '' : grid[col][row] || ''}
+											{printMode === 'blank' ? '' : grid[row][col] || ''}
 										</text>
 
 										{#if getNumber(col, row)}

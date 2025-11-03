@@ -123,11 +123,13 @@
 				grid: result.grid as string[][],
 				clues: {
 					across: result.across.map((q: any) => ({
+						direction: 0,
 						number: q.num,
 						clue: q.question,
 						answer: q.answer
 					})),
 					down: result.down.map((q: any) => ({
+						direction: 1,
 						number: q.num,
 						clue: q.question,
 						answer: q.answer

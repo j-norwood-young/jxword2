@@ -14,6 +14,7 @@ export type CrosswordData = {
 };
 
 export type CrosswordQuestion = {
+    direction: number; // 0 = across, 1 = down
     number: number;
     clue: string;
     answer: string;
@@ -29,6 +30,7 @@ export type CrosswordBlock = {
     startOfWord: boolean;
     index: number;
     question_number: string;
+    question_index: number;
     question_clue: string;
     correct: boolean;
 }
