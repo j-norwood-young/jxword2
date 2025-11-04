@@ -1763,19 +1763,38 @@
 									</div>
 								</div>
 							{:else}
-								<button
+								<div
 									class="questions-list-item"
 									class:active={isQuestionActive(question)}
-									onclick={() => handleQuestionClick(question)}
-									ondblclick={(e) => {
-										e.preventDefault();
-										startEditingQuestion(question);
-									}}
-									aria-label="Go to question {question.alpha_number}"
 								>
-									<span class="questions-list-item-num">{question.alpha_number}</span>
-									<span class="questions-list-item-question">{question.clue}</span>
-								</button>
+									<button
+										class="questions-list-item-button"
+										onclick={() => handleQuestionClick(question)}
+										ondblclick={(e) => {
+											e.preventDefault();
+											startEditingQuestion(question);
+										}}
+										aria-label="Go to question {question.alpha_number}"
+									>
+										<span class="questions-list-item-num">{question.alpha_number}</span>
+										<span class="questions-list-item-question">{question.clue}</span>
+									</button>
+									{#if editMode}
+										<button
+											class="questions-list-item-edit"
+											onclick={(e: MouseEvent) => {
+												e.preventDefault();
+												e.stopPropagation();
+												startEditingQuestion(question);
+											}}
+											aria-label="Edit question {question.alpha_number}"
+										>
+											<svg viewBox="0 0 20 20" fill="currentColor">
+												<path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
+											</svg>
+										</button>
+									{/if}
+								</div>
 							{/if}
 						</li>
 					{/each}
@@ -1830,19 +1849,38 @@
 									</div>
 								</div>
 							{:else}
-								<button
+								<div
 									class="questions-list-item"
 									class:active={isQuestionActive(question)}
-									onclick={() => handleQuestionClick(question)}
-									ondblclick={(e) => {
-										e.preventDefault();
-										startEditingQuestion(question);
-									}}
-									aria-label="Go to question {question.alpha_number}"
 								>
-									<span class="questions-list-item-num">{question.alpha_number}</span>
-									<span class="questions-list-item-question">{question.clue}</span>
-								</button>
+									<button
+										class="questions-list-item-button"
+										onclick={() => handleQuestionClick(question)}
+										ondblclick={(e) => {
+											e.preventDefault();
+											startEditingQuestion(question);
+										}}
+										aria-label="Go to question {question.alpha_number}"
+									>
+										<span class="questions-list-item-num">{question.alpha_number}</span>
+										<span class="questions-list-item-question">{question.clue}</span>
+									</button>
+									{#if editMode}
+										<button
+											class="questions-list-item-edit"
+											onclick={(e: MouseEvent) => {
+												e.preventDefault();
+												e.stopPropagation();
+												startEditingQuestion(question);
+											}}
+											aria-label="Edit question {question.alpha_number}"
+										>
+											<svg viewBox="0 0 20 20" fill="currentColor">
+												<path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
+											</svg>
+										</button>
+									{/if}
+								</div>
 							{/if}
 						</li>
 					{/each}
@@ -2459,6 +2497,21 @@
 
 	.questions-list-item {
 		padding-left: 3px;
+		border-radius: 3px;
+		padding: 2px 3px;
+		width: 100%;
+		display: flex;
+		align-items: flex-start;
+		justify-content: space-between;
+		gap: 0.5rem;
+		font-family: inherit;
+		font-size: inherit;
+		line-height: inherit;
+		position: relative;
+	}
+
+	.questions-list-item-button {
+		flex: 1;
 		cursor: pointer;
 		transition:
 			background-color 0.2s ease,
@@ -2468,15 +2521,15 @@
 		background: none;
 		border: none;
 		text-align: left;
-		width: 100%;
 		display: flex;
 		align-items: flex-start;
+		gap: 0.5rem;
 		font-family: inherit;
 		font-size: inherit;
 		line-height: inherit;
 	}
 
-	.questions-list-item:hover {
+	.questions-list-item:hover .questions-list-item-button {
 		background-color: #f0f0f0;
 		font-weight: 500;
 	}
@@ -2487,9 +2540,44 @@
 		background-color: #f0f0f0;
 	}
 
-	.questions-list-item.active {
+	.questions-list-item.active .questions-list-item-button {
 		background-color: var(--select-word-colour);
 		font-weight: bold;
+	}
+
+	.questions-list-item-question {
+		flex: 1;
+	}
+
+	.questions-list-item-edit {
+		display: none;
+		align-items: center;
+		justify-content: center;
+		width: 1.25rem;
+		height: 1.25rem;
+		padding: 0;
+		border: none;
+		background: none;
+		cursor: pointer;
+		color: #6b7280;
+		opacity: 0.6;
+		transition: opacity 0.2s, color 0.2s;
+		flex-shrink: 0;
+	}
+
+	.questions-list-item-edit svg {
+		width: 0.875rem;
+		height: 0.875rem;
+	}
+
+	.questions-list-item-edit:hover {
+		opacity: 1;
+		color: #3b82f6;
+	}
+
+	.questions-list-item:hover .questions-list-item-edit,
+	.questions-list-item.active .questions-list-item-edit {
+		display: flex;
 	}
 
 	.overlay {
