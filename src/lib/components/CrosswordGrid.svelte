@@ -42,6 +42,8 @@
 		debug?: boolean;
 		restoreState?: boolean;
 		completeAudio?: string | null;
+		size?: number;
+		symmetry?: boolean;
 		onload?: (event: CustomEvent<any>) => void;
 		ontimer?: (event: CustomEvent<any>) => void;
 		oncomplete?: (event: CustomEvent<any>) => void;
@@ -80,6 +82,8 @@
 		debug = false,
 		restoreState = false,
 		completeAudio = null,
+		size = $bindable(15),
+		symmetry = $bindable(true),
 		onload = () => {},
 		ontimer = () => {},
 		oncomplete = () => {},
@@ -470,6 +474,16 @@
 		// console.log('currentCell:', $state.snapshot(currentCell));
 	});
 
+	// Sync size prop with grid size on load
+	$effect(() => {
+		if (editMode && crosswordData.grid.length > 0) {
+			const gridSize = crosswordData.grid.length;
+			if (size !== gridSize) {
+				size = gridSize;
+			}
+		}
+	});
+
 	// Parse crossword data on mount
 	onMount(() => {
 		// Set up browser-specific properties
@@ -479,6 +493,24 @@
 			if (typeof window !== 'undefined' && completeAudio) {
 				audio = new Audio(completeAudio);
 			}
+			
+			// Initialize grid size if needed
+			if (editMode && size && crosswordData.grid.length === 0) {
+				const newGrid: string[][] = [];
+				for (let y = 0; y < size; y++) {
+					newGrid[y] = [];
+					for (let x = 0; x < size; x++) {
+						newGrid[y][x] = '';
+					}
+				}
+				crosswordData.grid = newGrid;
+				crosswordData = { ...crosswordData };
+			} else if (editMode && size && crosswordData.grid.length > 0 && 
+			          (crosswordData.grid.length !== size || crosswordData.grid[0]?.length !== size)) {
+				// Sync grid size to size prop
+				handleSizeChange(size);
+			}
+			
 			// Restore state if enabled
 			if (restoreState) {
 				restoreGameState();
@@ -1161,11 +1193,20 @@
 
 	function toggleCell(x: number, y: number) {
 		if (!editMode) return;
-		if (crosswordData.grid[y][x] === '#') {
+		const wasBlack = crosswordData.grid[y][x] === '#';
+		const action = wasBlack ? 'erase' : 'fill';
+		
+		if (wasBlack) {
 			crosswordData.grid[y][x] = '';
 		} else {
 			crosswordData.grid[y][x] = '#';
 		}
+		
+		// Apply symmetry if enabled
+		if (symmetry) {
+			applySymmetry(x, y, action);
+		}
+		
 		grid = [...crosswordData.grid];
 		crosswordData = { ...crosswordData };
 	}
@@ -1221,6 +1262,73 @@
 			if (crosswordData.grid[y][x] === '#') {
 				crosswordData.grid[y][x] = '';
 			}
+		}
+		
+		// Apply symmetry if enabled
+		if (symmetry && editMode) {
+			applySymmetry(x, y, drawingAction);
+		}
+		
+		grid = [...crosswordData.grid];
+		crosswordData = { ...crosswordData };
+	}
+
+	function applySymmetry(x: number, y: number, action: 'fill' | 'erase') {
+		// Calculate symmetric position (180-degree rotation)
+		const symX = cols - 1 - x;
+		const symY = rows - 1 - y;
+		
+		// Don't apply symmetry if it's the same cell (center cell)
+		if (symX === x && symY === y) return;
+		
+		// Apply the same action to the symmetric cell
+		if (action === 'fill') {
+			if (crosswordData.grid[symY] && crosswordData.grid[symY][symX] !== '#') {
+				crosswordData.grid[symY][symX] = '#';
+			}
+		} else if (action === 'erase') {
+			if (crosswordData.grid[symY] && crosswordData.grid[symY][symX] === '#') {
+				crosswordData.grid[symY][symX] = '';
+			}
+		}
+	}
+
+	function handleSizeChange(newSize: number) {
+		console.log('handleSizeChange', newSize, size);
+		if (newSize === size) return;
+		
+		const oldSize = size;
+		size = newSize;
+		
+		// Resize the grid
+		if (newSize > oldSize) {
+			// Expand grid
+			const currentGrid = crosswordData.grid;
+			const newGrid: string[][] = [];
+			
+			for (let y = 0; y < newSize; y++) {
+				newGrid[y] = [];
+				for (let x = 0; x < newSize; x++) {
+					if (y < currentGrid.length && x < currentGrid[y]?.length) {
+						newGrid[y][x] = currentGrid[y][x] || '';
+					} else {
+						newGrid[y][x] = '';
+					}
+				}
+			}
+			
+			crosswordData.grid = newGrid;
+		} else {
+			// Shrink grid
+			const newGrid: string[][] = [];
+			for (let y = 0; y < newSize; y++) {
+				newGrid[y] = [];
+				for (let x = 0; x < newSize; x++) {
+					newGrid[y][x] = crosswordData.grid[y]?.[x] || '';
+				}
+			}
+			
+			crosswordData.grid = newGrid;
 		}
 		
 		grid = [...crosswordData.grid];
@@ -1718,6 +1826,7 @@
 	<div class="play-area">
 		<div class="grid-container">
 			<div class="header">
+				{#if !editMode}
 				<nav class="controls">
 					<HamburgerMenu
 						onToggle={() => (showMenu = !showMenu)}
@@ -1726,6 +1835,33 @@
 						onBackdropClick={() => (showMenu = false)}
 					/>
 				</nav>
+				{/if}
+
+				{#if editMode}
+					<div class="grid-mode-controls" class:hidden={!gridDrawingMode}>
+						<div class="grid-size-control">
+							<label for="grid-size-slider" class="grid-size-label">Size: {size}x{size}</label>
+							<input
+								id="grid-size-slider"
+								type="range"
+								min="5"
+								max="30"
+								value={size}
+								oninput={(e) => handleSizeChange(parseInt((e.target as HTMLInputElement).value))}
+								class="grid-size-slider"
+							/>
+						</div>
+						<div class="grid-symmetry-control">
+							<input
+								type="checkbox"
+								id="grid-symmetry"
+								bind:checked={symmetry}
+								class="grid-symmetry-checkbox"
+							/>
+							<label for="grid-symmetry" class="grid-symmetry-label">Symmetry</label>
+						</div>
+					</div>
+				{/if}
 
 				<!-- Autocheck indicator in the middle -->
 				{#if autocheck}
@@ -2521,6 +2657,7 @@
 		width: 100%;
 		z-index: 10;
 		position: relative;
+		min-height: 2.5rem;
 	}
 
 	.controls {
@@ -2633,6 +2770,69 @@
 
 	.grid-mode-label {
 		font-weight: 500;
+	}
+
+	.grid-mode-controls {
+		display: flex;
+		align-items: center;
+		gap: 1rem;
+		margin-right: 0.5rem;
+		padding: 0.25rem 0.5rem;
+		background: #f9fafb;
+		border: 1px solid #e5e7eb;
+		border-radius: 0.375rem;
+		flex: 0 0 auto;
+		visibility: visible;
+		opacity: 1;
+		transition: opacity 0.2s ease, visibility 0.2s ease;
+	}
+
+	.grid-mode-controls.hidden {
+		visibility: hidden;
+		opacity: 0;
+		pointer-events: none;
+	}
+
+	.grid-size-control {
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+		min-width: 100px;
+		max-width: 120px;
+	}
+
+	.grid-size-label {
+		font-size: 0.6rem;
+		font-weight: 500;
+		color: #374151;
+		white-space: nowrap;
+	}
+
+	.grid-size-slider {
+		width: 100%;
+		cursor: pointer;
+	}
+
+	.grid-symmetry-control {
+		display: flex;
+		align-items: center;
+		gap: 0.25rem;
+		white-space: nowrap;
+	}
+
+	.grid-symmetry-checkbox {
+		width: 0.9rem;
+		height: 0.9rem;
+		cursor: pointer;
+		flex-shrink: 0;
+	}
+
+	.grid-symmetry-label {
+		font-size: 0.8rem;
+		font-weight: 500;
+		color: #374151;
+		cursor: pointer;
+		user-select: none;
 	}
 
 	.letter-text.correct {

@@ -382,7 +382,7 @@
 			<!-- <div>
 				<Menu onReset="{ handleReset }" onInstructions="{ handleInstructions }" />
 			</div> -->
-			<CrosswordGrid bind:crosswordData={data} editMode={editMode} debug={true} />
+			<CrosswordGrid bind:crosswordData={data} editMode={editMode} debug={true} bind:size={size} bind:symmetry={symmetry} />
 		</div>
 		
 		<textarea id="xd" name="xd" class="w-full h-96 border border-gray-300 p-4 mt-4" bind:value="{xd}" style:display="{displayXd ? 'block' : 'none'}"></textarea>
