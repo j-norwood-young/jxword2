@@ -1,9 +1,19 @@
-<script>
-    import { questionsAcross, questionsDown } from "$lib/libs/stores";
-    export let state;
+<script lang="ts">
+    import Button from "./Button.svelte";
+    import { Printer, FileText } from "lucide-svelte";
+    import type { CrosswordData } from "$lib/types/Crossword";
+    
+    type Props = {
+        state?: CrosswordData;
+    }
+    
+    let { state }: Props = $props();
 
     function printBlank() {
-        const svg = document.querySelector(`.jxword-svg`).cloneNode(true);
+        const svgElement = document.querySelector(`.crossword-svg`) as Element;
+        if (!svgElement) return;
+        const svg = svgElement.cloneNode(true) as Element;
+        if (!svg) return;
         const remove_els = [...svg.querySelectorAll(`.jxword-no-print-blank`), ...svg.querySelectorAll(`.jxword-no-print`)];
         for (let remove_el of remove_els) {
             remove_el.remove();
@@ -12,7 +22,10 @@
     }
 
     function printFilled() {
-        const svg = document.querySelector(`.jxword-svg`).cloneNode(true);
+        const svgElement = document.querySelector(`.crossword-svg`) as Element;
+        if (!svgElement) return;
+        const svg = svgElement.cloneNode(true) as Element;
+        if (!svg) return;
         const remove_els = [...svg.querySelectorAll(`.jxword-no-print`)];
         for (let remove_el of remove_els) {
             remove_el.remove();
@@ -20,24 +33,19 @@
         print(svg);
     }
 
-    function formatQuestions(direction) {
-        let questions;
-        if (direction === "down") {
-            questions = $questionsDown;
-        } else {
-            questions = $questionsAcross;
-        }
-        
-        return questions.map(question => `<li>${question.num}: ${question.question}</li>`).join("");
+    function formatQuestions(direction: "across" | "down") {
+        if (!state) return "";
+        const questions = direction === "down" ? state.clues.down : state.clues.across;
+        return questions.map(question => `<li>${question.alpha_number || question.number}: ${question.clue || ""}</li>`).join("");
     }
 
-    function print(svg) {
-        // console.log(svg);
+    function print(svg: Element) {
         const svg_text = svg.outerHTML.replace(/fill="#f7f457"/g, `fill="#ffffff"`).replace(/fill="#9ce0fb"/g, `fill="#ffffff"`);
         const questions_across = `<h4>Across</h4><ol class="jxword-questions-list">${formatQuestions("across")}</ol>`;
         const questions_down = `<h4>Down</h4><ol class="jxword-questions-list">${formatQuestions("down")}</ol>`;
         let printWindow = window.open();
-        printWindow.document.write(`<html><head><title>${state.title}</title>`);
+        if (!printWindow) return;
+        printWindow.document.write(`<html><head><title>${state?.title || "Crossword"}</title>`);
         printWindow.document.write(`<style>
             .svg-container {
                 height: 35em;
@@ -81,10 +89,13 @@
     }
 </script>
 
-<main>
-    <button class="jxword-button" on:click="{printFilled}">Print (Filled)</button>
-    <button class="jxword-button" on:click="{printBlank}">Print (Blank)</button>
+<main class="flex flex-col gap-2">
+    <Button variant="secondary" onclick={printFilled}>
+        <Printer size={16} class="mr-2" />
+        Print (Filled)
+    </Button>
+    <Button variant="secondary" onclick={printBlank}>
+        <FileText size={16} class="mr-2" />
+        Print (Blank)
+    </Button>
 </main>
-
-<style lang="scss">
-</style>
