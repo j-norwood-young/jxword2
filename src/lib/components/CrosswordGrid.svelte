@@ -12,6 +12,17 @@
 	import HamburgerMenu from './HamburgerMenu.svelte';
 	import { suggest } from '$lib/suggestions/suggest.js';
 
+	function focus(node: HTMLInputElement) {
+		node.focus();
+		node.select();
+		return {
+			update() {
+				node.focus();
+				node.select();
+			}
+		};
+	}
+
 	interface Props {
 		crosswordData: CrosswordType;
 		editMode?: boolean;
@@ -370,11 +381,10 @@
 		return [];
 	});
 
-	// Derive editClueText from current question's clue
-	const editClueText = $derived.by(() => {
-		if (!editMode || !currentQuestion) return '';
-		return currentQuestion.clue || '';
-	});
+	// Track which question is being edited (direction and number)
+	let editingQuestion: { direction: number; alpha_number: string } | null = $state(null);
+	let editingClueText: string = $state('');
+	let clickTimeout: ReturnType<typeof setTimeout> | null = null;
 
 	// Set CSS custom property for crossword height
 	// Swing back to this once we have made the whole thing declarative
@@ -431,6 +441,10 @@
 	onDestroy(() => {
 		if (timerInterval) {
 			clearInterval(timerInterval);
+		}
+		if (clickTimeout) {
+			clearTimeout(clickTimeout);
+			clickTimeout = null;
 		}
 		// Stop active fireworks if any
 		if (activeFireworks) {
@@ -626,13 +640,29 @@
 			// Space
 			event.preventDefault();
 			moveToNext();
-		} else if (event.key === 'Tab' || event.key === 'Enter') {
-			// Tab or Enter
+		} else if (event.key === 'Tab') {
+			// Tab
 			event.preventDefault();
 			if (event.shiftKey) {
 				moveToPreviousWord();
 			} else {
 				moveToNextWord();
+			}
+		} else if (event.key === 'Enter') {
+			// Enter
+			event.preventDefault();
+			if (editMode) {
+				if (!currentQuestion) return;
+				// Start editing the current question in edit mode
+				startEditingQuestion(currentQuestion);
+				return;
+			} else {
+				// Normal navigation behavior when not in edit mode
+				if (event.shiftKey) {
+					moveToPreviousWord();
+				} else {
+					moveToNextWord();
+				}
 			}
 		} else if (event.key === 'ArrowLeft') {
 			// Left
@@ -1208,7 +1238,7 @@
 	function getCurrentWordPattern() {
 		if (!currentQuestion) return '';
 		const scalar = direction ? scalarDown : scalarAcross;
-		const questionCells = scalar.filter((cell) => cell.question.number === currentQuestion.number);
+		const questionCells = scalar.filter((cell) => cell.question.alpha_number === currentQuestion.alpha_number);
 		return questionCells.map((cell) => cell.letter).join('');
 	}
 
@@ -1217,24 +1247,99 @@
 		return !pattern.includes('?');
 	}
 
-	function updateClue(event: Event) {
-		if (!currentQuestion) return;
-		const textarea = event.target as HTMLTextAreaElement;
-		const newClue = textarea.value;
-		const isDown = direction === 1;
-		const questionList = isDown ? crosswordData.clues.down : crosswordData.clues.across;
-		const questionIndex = questionList.findIndex(q => q.number === currentQuestion.number);
+	function startEditingQuestion(question: CrosswordQuestionType) {
+		if (!editMode) return;
+		// Cancel any pending single click
+		if (clickTimeout) {
+			clearTimeout(clickTimeout);
+			clickTimeout = null;
+		}
+		// Make this question the current question
+		moveToQuestion(question);
+		editingQuestion = { direction: question.direction, alpha_number: question.alpha_number || '' };
+		editingClueText = question.clue || '';
+	}
+
+	function handleQuestionClick(question: CrosswordQuestionType) {
+		moveToQuestion(question);
+		return;
+	}
+
+	function cancelEditingQuestion() {
+		editingQuestion = null;
+		editingClueText = '';
+	}
+
+	function saveQuestionClue(moveToNext: boolean = false) {
+		if (!editingQuestion) return;
+		const clue = editingClueText;
+		const questionList = editingQuestion.direction === 1 
+			? crosswordData.clues.down 
+			: crosswordData.clues.across;
+		const questionIndex = questionList.findIndex(q => q.alpha_number === editingQuestion!.alpha_number);
 		if (questionIndex !== -1) {
-			questionList[questionIndex].clue = newClue;
+			questionList[questionIndex].clue = clue;
 			// Trigger reactivity
 			crosswordData = { ...crosswordData };
 		}
+		
+		if (moveToNext) {
+			// Find the next question to edit
+			const nextQuestion = findNextQuestion(editingQuestion);
+			if (nextQuestion) {
+				editingQuestion = { direction: nextQuestion.direction, alpha_number: nextQuestion.alpha_number || '' };
+				editingClueText = nextQuestion.clue || '';
+				moveToQuestion(nextQuestion);
+			} else {
+				editingQuestion = null;
+				editingClueText = '';
+			}
+		} else {
+			// Stop editing
+			editingQuestion = null;
+			editingClueText = '';
+		}
+	}
+
+	function findNextQuestion(current: { direction: number; alpha_number: string }): CrosswordQuestionType | null {
+		const currentList = current.direction === 1 
+			? crosswordData.clues.down 
+			: crosswordData.clues.across;
+		const currentIndex = currentList.findIndex(q => q.alpha_number === current.alpha_number);
+		
+		if (currentIndex === -1) return null;
+		
+		// Try next question in the same direction
+		if (currentIndex < currentList.length - 1) {
+			return { ...currentList[currentIndex + 1], direction: current.direction };
+		}
+		
+		// If at the end of current list, try the first question in the other direction
+		const otherList = current.direction === 1 
+			? crosswordData.clues.across 
+			: crosswordData.clues.down;
+		if (otherList.length > 0) {
+			return { ...otherList[0], direction: current.direction === 1 ? 0 : 1 };
+		}
+		
+		// If no other questions, wrap to the first question in the same direction
+		if (currentList.length > 0) {
+			return { ...currentList[0], direction: current.direction };
+		}
+		
+		return null;
+	}
+
+	function isQuestionBeingEdited(question: CrosswordQuestionType): boolean {
+		if (!editingQuestion) return false;
+		return editingQuestion.direction === question.direction && 
+		       editingQuestion.alpha_number === question.alpha_number;
 	}
 
 	function fillWordFromSuggestion(suggestion: string) {
 		if (!currentQuestion) return;
 		const scalar = direction ? scalarDown : scalarAcross;
-		const questionCells = scalar.filter((cell) => cell.question.number === currentQuestion.number);
+		const questionCells = scalar.filter((cell) => cell.question.alpha_number === currentQuestion.alpha_number);
 		
 		suggestion = suggestion.toUpperCase();
 		if (suggestion.length !== questionCells.length) return;
@@ -1247,7 +1352,7 @@
 		
 		// Update the answer in the question
 		const questionList = direction ? crosswordData.clues.down : crosswordData.clues.across;
-		const questionIndex = questionList.findIndex(q => q.number === currentQuestion.number);
+		const questionIndex = questionList.findIndex(q => q.alpha_number === currentQuestion.alpha_number);
 		if (questionIndex !== -1) {
 			questionList[questionIndex].answer = suggestion;
 			crosswordData = { ...crosswordData };
@@ -1257,7 +1362,7 @@
 	function fillLetterAtIndex(index: number, letter: string) {
 		if (!currentQuestion) return;
 		const scalar = direction ? scalarDown : scalarAcross;
-		const questionCells = scalar.filter((cell) => cell.question.number === currentQuestion.number);
+		const questionCells = scalar.filter((cell) => cell.question.alpha_number === currentQuestion.alpha_number);
 		
 		if (index < 0 || index >= questionCells.length) return;
 		const cell = questionCells[index];
@@ -1275,7 +1380,7 @@
 		// Update answer
 		const pattern = getCurrentWordPattern();
 		const questionList = direction ? crosswordData.clues.down : crosswordData.clues.across;
-		const questionIndex = questionList.findIndex(q => q.number === currentQuestion.number);
+		const questionIndex = questionList.findIndex(q => q.alpha_number === currentQuestion.alpha_number);
 		if (questionIndex !== -1) {
 			questionList[questionIndex].answer = pattern;
 			crosswordData = { ...crosswordData };
@@ -1329,7 +1434,7 @@
 			(cell) => cell.x === currentCell[0] && cell.y === currentCell[1]
 		);
 		if (!currentCellBlock) return false;
-		return currentCellBlock.question.number === question.number;
+		return currentCellBlock.question.alpha_number === question.alpha_number;
 	}
 
 	function moveToQuestion(question: CrosswordQuestionType) {
@@ -1340,9 +1445,9 @@
 		// Find the question in the appropriate scalar array
 		let targetQuestion = null;
 		if (isAcross) {
-			targetQuestion = scalar.find((cell) => cell.question.number === question.number);
+			targetQuestion = scalar.find((cell) => cell.question.alpha_number === question.alpha_number);
 		} else {
-			targetQuestion = scalar.find((cell) => cell.question.number === question.number);
+			targetQuestion = scalar.find((cell) => cell.question.alpha_number === question.alpha_number);
 		}
 
 		if (!targetQuestion) return;
@@ -1354,7 +1459,7 @@
 		}
 
 		let questionCells = scalar.filter(
-			(cell) => cell.question.number === question.number
+			(cell) => cell.question.alpha_number === question.alpha_number
 		);
 
 		// Find the first available square (empty or incorrect)
@@ -1607,94 +1712,6 @@
 			<MobileKeyboard on:keypress={handleMobileKeyPress} />
 		</div>
 
-		{#if editMode && currentQuestion}
-			<div class="edit-panel">
-				<div class="edit-panel-header">
-					<div class="edit-panel-title">
-						<span class="question-number-badge">{currentQuestion.number}</span>
-						<span class="question-direction">{direction ? 'Down' : 'Across'}</span>
-					</div>
-				</div>
-				
-				<div class="edit-panel-content">
-					<div class="edit-clue-section">
-						<label class="edit-label" for="clue-input">Clue</label>
-						<textarea
-							id="clue-input"
-							class="clue-input"
-							value={editClueText}
-							oninput={updateClue}
-							placeholder="Enter the clue for this question..."
-							rows="3"
-						></textarea>
-					</div>
-					
-					{#if !isWordComplete()}
-						<div class="edit-word-section">
-							<div class="word-pattern-section">
-								<div class="edit-label">Word Pattern</div>
-								<div class="word-pattern">
-									{#each getCurrentWordPattern().split('') as letter, index}
-										<input
-											type="text"
-											class="word-letter-input"
-											class:empty={!letter || letter === '?'}
-											value={letter === '?' ? '' : letter}
-											maxlength="1"
-											oninput={(e) => {
-												const value = (e.target as HTMLInputElement).value.toUpperCase();
-												if (value && /^[A-Z]$/.test(value)) {
-													fillLetterAtIndex(index, value);
-												} else if (value === '') {
-													fillLetterAtIndex(index, '');
-												}
-											}}
-											onkeydown={(e) => {
-												if (e.key === 'ArrowLeft' && index > 0) {
-													e.preventDefault();
-													(e.currentTarget.previousElementSibling as HTMLInputElement)?.focus();
-												} else if (e.key === 'ArrowRight' && index < getCurrentWordPattern().length - 1) {
-													e.preventDefault();
-													(e.currentTarget.nextElementSibling as HTMLInputElement)?.focus();
-												} else if (e.key === 'Backspace' && !letter && index > 0) {
-													e.preventDefault();
-													(e.currentTarget.previousElementSibling as HTMLInputElement)?.focus();
-												}
-											}}
-										/>
-									{/each}
-								</div>
-							</div>
-							
-							{#if wordSuggestions.length > 0}
-								<div class="suggestions-section">
-									<div class="edit-label">Suggestions</div>
-									<div class="suggestions-list">
-										{#each wordSuggestions as suggestion}
-											<button
-												class="suggestion-button"
-												onclick={() => fillWordFromSuggestion(suggestion)}
-											>
-												{suggestion.toUpperCase()}
-											</button>
-										{/each}
-									</div>
-								</div>
-							{/if}
-						</div>
-					{:else}
-						<div class="word-complete-indicator">
-							<div class="complete-badge">
-								<svg class="check-icon" viewBox="0 0 20 20" fill="currentColor">
-									<path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" />
-								</svg>
-								Word Complete: {getCurrentWordPattern()}
-							</div>
-						</div>
-					{/if}
-				</div>
-			</div>
-		{/if}
 
 		<div class="question-container desktop-only">
 			<div class="questions-across" bind:this={questionsAcrossContainer}>
@@ -1702,15 +1719,64 @@
 				<ol class="questions-list">
 					{#each acrossQuestions as question}
 						<li>
-							<button
-								class="questions-list-item"
-								class:active={isQuestionActive(question)}
-								onclick={() => moveToQuestion(question)}
-								aria-label="Go to question {question.alpha_number}"
-							>
-								<span class="questions-list-item-num">{question.alpha_number}</span>
-								<span class="questions-list-item-question">{question.clue}</span>
-							</button>
+							{#if editMode && isQuestionBeingEdited(question)}
+								<div class="questions-list-item editing">
+									<span class="questions-list-item-num">{question.alpha_number}</span>
+									<input
+										type="text"
+										class="questions-list-item-input"
+										value={editingClueText}
+										oninput={(e) => {
+											const newValue = (e.target as HTMLInputElement).value;
+											editingClueText = newValue;
+										}}
+										onkeydown={(e) => {
+											if (e.key === 'Enter') {
+												e.preventDefault();
+												saveQuestionClue(true);
+											} else if (e.key === 'Escape') {
+												e.preventDefault();
+												cancelEditingQuestion();
+											}
+										}}
+										use:focus
+									/>
+									<div class="questions-list-item-actions">
+										<button
+											class="questions-list-item-action save"
+											onclick={() => saveQuestionClue(false)}
+											aria-label="Save"
+										>
+											<svg viewBox="0 0 20 20" fill="currentColor">
+												<path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" />
+											</svg>
+										</button>
+										<button
+											class="questions-list-item-action cancel"
+											onclick={cancelEditingQuestion}
+											aria-label="Cancel"
+										>
+											<svg viewBox="0 0 20 20" fill="currentColor">
+												<path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" />
+											</svg>
+										</button>
+									</div>
+								</div>
+							{:else}
+								<button
+									class="questions-list-item"
+									class:active={isQuestionActive(question)}
+									onclick={() => handleQuestionClick(question)}
+									ondblclick={(e) => {
+										e.preventDefault();
+										startEditingQuestion(question);
+									}}
+									aria-label="Go to question {question.alpha_number}"
+								>
+									<span class="questions-list-item-num">{question.alpha_number}</span>
+									<span class="questions-list-item-question">{question.clue}</span>
+								</button>
+							{/if}
 						</li>
 					{/each}
 				</ol>
@@ -1720,15 +1786,64 @@
 				<ol class="questions-list">
 					{#each downQuestions as question}
 						<li>
-							<button
-								class="questions-list-item"
-								class:active={isQuestionActive(question)}
-								onclick={() => moveToQuestion(question)}
-								aria-label="Go to question {question.alpha_number}"
-							>
-								<span class="questions-list-item-num">{question.alpha_number}</span>
-								<span class="questions-list-item-question">{question.clue}</span>
-							</button>
+							{#if editMode && isQuestionBeingEdited(question)}
+								<div class="questions-list-item editing">
+									<span class="questions-list-item-num">{question.alpha_number}</span>
+									<input
+										type="text"
+										class="questions-list-item-input"
+										value={editingClueText}
+										oninput={(e) => {
+											const newValue = (e.target as HTMLInputElement).value;
+											editingClueText = newValue;
+										}}
+										onkeydown={(e) => {
+											if (e.key === 'Enter') {
+												e.preventDefault();
+												saveQuestionClue(true);
+											} else if (e.key === 'Escape') {
+												e.preventDefault();
+												cancelEditingQuestion();
+											}
+										}}
+										use:focus
+									/>
+									<div class="questions-list-item-actions">
+										<button
+											class="questions-list-item-action save"
+											onclick={() => saveQuestionClue(false)}
+											aria-label="Save"
+										>
+											<svg viewBox="0 0 20 20" fill="currentColor">
+												<path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" />
+											</svg>
+										</button>
+										<button
+											class="questions-list-item-action cancel"
+											onclick={cancelEditingQuestion}
+											aria-label="Cancel"
+										>
+											<svg viewBox="0 0 20 20" fill="currentColor">
+												<path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" />
+											</svg>
+										</button>
+									</div>
+								</div>
+							{:else}
+								<button
+									class="questions-list-item"
+									class:active={isQuestionActive(question)}
+									onclick={() => handleQuestionClick(question)}
+									ondblclick={(e) => {
+										e.preventDefault();
+										startEditingQuestion(question);
+									}}
+									aria-label="Go to question {question.alpha_number}"
+								>
+									<span class="questions-list-item-num">{question.alpha_number}</span>
+									<span class="questions-list-item-question">{question.clue}</span>
+								</button>
+							{/if}
 						</li>
 					{/each}
 				</ol>
@@ -2768,229 +2883,78 @@
 		}
 	}
 
-	.edit-panel {
-		position: fixed;
-		bottom: 0;
-		left: 0;
-		right: 0;
-		background: white;
-		border-top: 2px solid #e5e7eb;
-		box-shadow: 0 -4px 6px -1px rgba(0, 0, 0, 0.1), 0 -2px 4px -1px rgba(0, 0, 0, 0.06);
-		z-index: 100;
-		max-height: 50vh;
-		display: flex;
-		flex-direction: column;
-		animation: slideUp 0.3s ease-out;
-	}
-
-	@keyframes slideUp {
-		from {
-			transform: translateY(100%);
-		}
-		to {
-			transform: translateY(0);
-		}
-	}
-
-	.edit-panel-header {
-		padding: 1rem 1.5rem;
-		border-bottom: 1px solid #e5e7eb;
-		background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-		color: white;
-	}
-
-	.edit-panel-title {
+	.questions-list-item.editing {
 		display: flex;
 		align-items: center;
-		gap: 0.75rem;
-		font-weight: 600;
-		font-size: 1rem;
+		gap: 0.5rem;
+		padding: 2px 3px;
+		background: #f0f9ff;
+		border: 2px solid #3b82f6;
+		border-radius: 3px;
 	}
 
-	.question-number-badge {
-		display: inline-flex;
+	.questions-list-item-input {
+		flex: 1;
+		padding: 2px 4px;
+		border: 1px solid #cbd5e1;
+		border-radius: 3px;
+		font-family: inherit;
+		font-size: inherit;
+		line-height: inherit;
+		background: white;
+	}
+
+	.questions-list-item-input:focus {
+		outline: none;
+		border-color: #3b82f6;
+		box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+	}
+
+	.questions-list-item-actions {
+		display: flex;
+		gap: 0.25rem;
+		flex-shrink: 0;
+	}
+
+	.questions-list-item-action {
+		display: flex;
 		align-items: center;
 		justify-content: center;
-		width: 2rem;
-		height: 2rem;
-		background: rgba(255, 255, 255, 0.2);
-		border-radius: 0.375rem;
-		font-weight: bold;
-		font-size: 0.875rem;
-		backdrop-filter: blur(4px);
-	}
-
-	.question-direction {
-		opacity: 0.95;
-		font-size: 0.875rem;
-	}
-
-	.edit-panel-content {
-		padding: 1.5rem;
-		overflow-y: auto;
-		flex: 1;
-	}
-
-	.edit-clue-section {
-		margin-bottom: 1.5rem;
-	}
-
-	.edit-word-section {
-		margin-top: 1.5rem;
-		padding-top: 1.5rem;
-		border-top: 1px solid #e5e7eb;
-	}
-
-	.edit-label {
-		display: block;
-		font-weight: 600;
-		font-size: 0.875rem;
-		color: #374151;
-		margin-bottom: 0.5rem;
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
-	}
-
-	.clue-input {
-		width: 100%;
-		padding: 0.75rem;
-		border: 2px solid #e5e7eb;
-		border-radius: 0.5rem;
-		font-size: 0.9375rem;
-		font-family: inherit;
-		line-height: 1.5;
-		resize: vertical;
-		transition: border-color 0.2s, box-shadow 0.2s;
-	}
-
-	.clue-input:focus {
-		outline: none;
-		border-color: #667eea;
-		box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
-	}
-
-	.word-pattern-section {
-		margin-bottom: 1.5rem;
-	}
-
-	.word-pattern {
-		display: flex;
-		gap: 0.5rem;
-		flex-wrap: wrap;
-		align-items: center;
-	}
-
-	.word-letter-input {
-		width: 3rem;
-		height: 3rem;
-		text-align: center;
-		font-size: 1.25rem;
-		font-weight: 600;
-		border: 2px solid #e5e7eb;
-		border-radius: 0.5rem;
+		width: 1.5rem;
+		height: 1.5rem;
+		padding: 0;
+		border: 1px solid #cbd5e1;
+		border-radius: 3px;
 		background: white;
-		transition: all 0.2s;
-		font-family: 'Courier New', monospace;
-	}
-
-	.word-letter-input:focus {
-		outline: none;
-		border-color: #667eea;
-		box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
-		transform: scale(1.05);
-	}
-
-	.word-letter-input.empty {
-		background: #f9fafb;
-		border-style: dashed;
-		border-color: #d1d5db;
-	}
-
-	.word-letter-input.empty:focus {
-		background: white;
-		border-style: solid;
-		border-color: #667eea;
-	}
-
-	.suggestions-section {
-		margin-top: 1rem;
-	}
-
-	.suggestions-list {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 0.5rem;
-	}
-
-	.suggestion-button {
-		padding: 0.5rem 1rem;
-		background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-		color: white;
-		border: none;
-		border-radius: 0.375rem;
-		font-weight: 600;
-		font-size: 0.875rem;
 		cursor: pointer;
 		transition: all 0.2s;
-		box-shadow: 0 2px 4px rgba(102, 126, 234, 0.2);
-		font-family: 'Courier New', monospace;
-		letter-spacing: 0.05em;
 	}
 
-	.suggestion-button:hover {
-		transform: translateY(-2px);
-		box-shadow: 0 4px 8px rgba(102, 126, 234, 0.3);
+	.questions-list-item-action:hover {
+		transform: scale(1.1);
 	}
 
-	.suggestion-button:active {
-		transform: translateY(0);
-	}
-
-	.word-complete-indicator {
-		margin-top: 1rem;
-		padding-top: 1rem;
-		border-top: 1px solid #e5e7eb;
-	}
-
-	.complete-badge {
-		display: inline-flex;
-		align-items: center;
-		gap: 0.5rem;
-		padding: 0.75rem 1rem;
-		background: #d1fae5;
-		color: #065f46;
-		border-radius: 0.5rem;
-		font-weight: 600;
-		font-size: 0.875rem;
-		font-family: 'Courier New', monospace;
-		letter-spacing: 0.05em;
-	}
-
-	.check-icon {
-		width: 1.25rem;
-		height: 1.25rem;
+	.questions-list-item-action.save {
 		color: #059669;
+		border-color: #059669;
 	}
 
-	@media print {
-		.edit-panel {
-			display: none !important;
-		}
+	.questions-list-item-action.save:hover {
+		background: #d1fae5;
 	}
 
-	@media (max-width: 768px) {
-		.edit-panel {
-			max-height: 60vh;
-		}
+	.questions-list-item-action.cancel {
+		color: #dc2626;
+		border-color: #dc2626;
+	}
 
-		.edit-panel-content {
-			padding: 1rem;
-		}
+	.questions-list-item-action.cancel:hover {
+		background: #fee2e2;
+	}
 
-		.word-letter-input {
-			width: 2.5rem;
-			height: 2.5rem;
-			font-size: 1rem;
-		}
+	.questions-list-item-action svg {
+		width: 0.875rem;
+		height: 0.875rem;
 	}
 </style>
+
