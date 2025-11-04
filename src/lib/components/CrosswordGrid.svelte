@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount, onDestroy } from 'svelte';
+	import { onMount, onDestroy, tick } from 'svelte';
 	import { Fireworks } from 'fireworks-js';
 	import type {
 		CrosswordData as CrosswordType,
@@ -53,7 +53,16 @@
 	}
 
 	let {
-		crosswordData,
+		crosswordData = $bindable({
+			title: '',
+			author: '',
+			date: '',
+			difficulty: '',
+			type: '',
+			copyright: '',
+			grid: [],
+			clues: { across: [], down: [] }
+		}),
 		editMode = false,
 		width = 500,
 		height = 500,
@@ -80,19 +89,6 @@
 		oncheat = () => {},
 		onprogress = () => {}
 	}: Props = $props();
-
-	let acrossQuestions: CrosswordQuestionType[] = $derived.by(() => {
-		return crosswordData.clues.across.map((question: CrosswordQuestionType) => ({
-			...question,
-			correct: false
-		}));
-	});
-	let downQuestions: CrosswordQuestionType[] = $derived.by(() => {
-		return crosswordData.clues.down.map((question: CrosswordQuestionType) => ({
-			...question,
-			correct: false
-		}));
-	});
 
 	// Derived properties
 	let grid: string[][] = $derived.by(() => {
@@ -225,6 +221,53 @@
 		return down;
 	});
 
+	let acrossQuestions: CrosswordQuestionType[] = $derived.by(() => {
+		// Create an array of questions from our grid
+		let questions: CrosswordQuestionType[] = [];
+		let scalar = scalarAcross;
+		scalar.forEach((cell) => {
+			if (cell.startOfWord) {
+				questions.push(cell.question);
+			}
+		});
+		return questions;
+	});
+
+	let downQuestions: CrosswordQuestionType[] = $derived.by(() => {
+		let questions: CrosswordQuestionType[] = [];
+		let scalar = scalarDown;
+		scalar.forEach((cell) => {
+			if (cell.startOfWord) {
+				questions.push(cell.question);
+			}
+		});
+		return questions;
+	});
+
+	function ensureAllQuestions() {
+		// Makes sure that we have all the questions in the crosswordData based on our scalars
+		let changed = false;
+		scalarAcross.forEach(cell => {
+			if (!crosswordData.clues.across.some(q => q.alpha_number === cell.question.alpha_number)) {
+				crosswordData.clues.across.push(cell.question);
+				changed = true;
+			}
+		});
+		scalarDown.forEach(cell => {
+			if (!crosswordData.clues.down.some(q => q.alpha_number === cell.question.alpha_number)) {
+				crosswordData.clues.down.push(cell.question);
+				changed = true;
+			}
+		});
+		if (changed) {
+			crosswordData = { ...crosswordData };
+		}
+	}
+
+	$effect(() => {
+		ensureAllQuestions();
+	});
+
 	// Our local state
 	let time_taken = $state(0);
 	let incorrectGrid: boolean[][] = $derived.by(() =>
@@ -298,6 +341,12 @@
 	let shareUrl = $state<string | null>(null);
 	let xShareUrl = $state('');
 	let whatsappShareUrl = $state('');
+
+	// Grid drawing mode
+	let gridDrawingMode = $state(false);
+	let isDrawing = $state(false);
+	let drawingAction: 'fill' | 'erase' | null = $state(null);
+	let lastDrawnCell: [number, number] | null = $state(null);
 
 	// Timer
 	let timerInterval: ReturnType<typeof setInterval> | null = null;
@@ -445,6 +494,12 @@
 		if (clickTimeout) {
 			clearTimeout(clickTimeout);
 			clickTimeout = null;
+		}
+		// Stop drawing if active
+		if (isDrawing) {
+			isDrawing = false;
+			drawingAction = null;
+			lastDrawnCell = null;
 		}
 		// Stop active fireworks if any
 		if (activeFireworks) {
@@ -628,6 +683,12 @@
 		}
 		if (editMode && ['.', '#'].includes(event.key)) {
 			toggleCell(currentCell[0], currentCell[1]);
+			if (direction === 0) {
+				currentCell = [currentCell[0] + 1, currentCell[1]];
+			} else {
+				currentCell = [currentCell[0], currentCell[1] + 1];
+			}
+			// moveToNext();
 			return;
 		}
 		if (event.key === 'Backspace') {
@@ -1080,6 +1141,9 @@
 	}
 
 	function handleCellClick(col: number, row: number) {
+		// Don't handle normal clicks when in grid drawing mode
+		if (gridDrawingMode && editMode) return;
+		
 		if (col === currentCell[0] && row === currentCell[1]) {
 			changeDirection();
 		} else {
@@ -1103,6 +1167,64 @@
 			crosswordData.grid[y][x] = '#';
 		}
 		grid = [...crosswordData.grid];
+		crosswordData = { ...crosswordData };
+	}
+
+	function handleCellMouseDown(col: number, row: number, event: MouseEvent) {
+		if (!editMode || !gridDrawingMode) return;
+		
+		// Only start drawing on cells that can be toggled (empty or black squares)
+		if (crosswordData.grid[row][col].trim() !== '' && crosswordData.grid[row][col].trim() !== '#') return;
+
+		event.preventDefault();
+		isDrawing = true;
+		
+		// Determine the action based on the initial cell state
+		const isBlack = crosswordData.grid[row][col] === '#';
+		drawingAction = isBlack ? 'erase' : 'fill';
+		
+		// Apply the action to the initial cell
+		applyDrawingAction(col, row);
+		lastDrawnCell = [col, row];
+	}
+
+	function handleCellMouseMove(col: number, row: number, event: MouseEvent) {
+		if (!editMode || !gridDrawingMode || !isDrawing || !drawingAction) return;
+		
+		// Only draw on cells that can be toggled
+		if (crosswordData.grid[row][col].trim() !== '' && crosswordData.grid[row][col].trim() !== '#') return;
+		
+		// Prevent drawing on the same cell multiple times
+		if (lastDrawnCell && lastDrawnCell[0] === col && lastDrawnCell[1] === row) return;
+		
+		event.preventDefault();
+		applyDrawingAction(col, row);
+		lastDrawnCell = [col, row];
+	}
+
+	function handleCellMouseUp() {
+		if (isDrawing) {
+			isDrawing = false;
+			drawingAction = null;
+			lastDrawnCell = null;
+		}
+	}
+
+	function applyDrawingAction(x: number, y: number) {
+		if (!drawingAction) return;
+		
+		if (drawingAction === 'fill') {
+			if (crosswordData.grid[y][x] !== '#') {
+				crosswordData.grid[y][x] = '#';
+			}
+		} else if (drawingAction === 'erase') {
+			if (crosswordData.grid[y][x] === '#') {
+				crosswordData.grid[y][x] = '';
+			}
+		}
+		
+		grid = [...crosswordData.grid];
+		crosswordData = { ...crosswordData };
 	}
 
 	function formatTime(t: number) {
@@ -1281,6 +1403,15 @@
 			questionList[questionIndex].clue = clue;
 			// Trigger reactivity
 			crosswordData = { ...crosswordData };
+		} else {
+			questionList.push({
+				direction: editingQuestion!.direction,
+				alpha_number: editingQuestion!.alpha_number,
+				clue: clue,
+				answer: getCurrentWordPattern()
+			});
+			crosswordData = { ...crosswordData };
+			
 		}
 		
 		if (moveToNext) {
@@ -1570,7 +1701,10 @@
 	}
 </script>
 
-<svelte:window onkeydown={handleKeyPress} />
+<svelte:window 
+	onkeydown={handleKeyPress}
+	onmouseup={handleCellMouseUp}
+/>
 
 <div class="crossword-container">
 	<!-- Print title (only visible when printing) -->
@@ -1607,7 +1741,23 @@
 					</div>
 				{/if}
 
-				{#if !editMode}
+				{#if editMode}
+					<div class="right-controls">
+						<button 
+							class="grid-mode-button"
+							class:active={gridDrawingMode}
+							onclick={() => gridDrawingMode = !gridDrawingMode}
+							onkeydown={(e) => e.key === 'Enter' && (gridDrawingMode = !gridDrawingMode)}
+							title={gridDrawingMode ? 'Exit Grid Mode' : 'Enter Grid Mode'}
+						>
+							<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+								<path d="M3 3h18v18H3z" />
+								<path d="M3 9h18M3 15h18M9 3v18M15 3v18" />
+							</svg>
+							<span class="grid-mode-label">{gridDrawingMode ? 'Grid Mode On' : 'Grid Mode'}</span>
+						</button>
+					</div>
+				{:else}
 					<div class="right-controls">
 						<div class="timer">{formatTime(time_taken)}</div>
 						<button class="pause" onclick={pause} onkeydown={(e) => e.key === 'Enter' && pause()}>
@@ -1629,13 +1779,19 @@
 			</div>
 
 			<div class="svg-container">
-				<svg class="crossword-svg" viewBox="0 0 {totalWidth} {totalHeight}">
+				<svg 
+					class="crossword-svg" 
+					viewBox="0 0 {totalWidth} {totalHeight}"
+					role="application"
+					aria-label="Crossword grid"
+				>
 					<g class="cell-group">
 						{#each Array(rows) as _, row}
 							{#each Array(cols) as _, col}
 								<g class={getCellClass(col, row)}>
 									<rect
 										class="cell-rect"
+										class:grid-drawing={gridDrawingMode && editMode}
 										role="cell"
 										tabindex="-1"
 										x={cellWidth * col + margin}
@@ -1649,6 +1805,9 @@
 										data-row={row}
 										onclick={() => handleCellClick(col, row)}
 										ondblclick={() => handleCellDoubleClick(col, row)}
+										onmousedown={(e) => handleCellMouseDown(col, row, e)}
+										onmousemove={(e) => handleCellMouseMove(col, row, e)}
+										onmouseup={handleCellMouseUp}
 										onkeydown={(e) => e.key === 'Enter' && handleCellClick(col, row)}
 									/>
 									{#if grid[row][col] !== '#'}
@@ -2436,6 +2595,44 @@
 			outline: none;
 			cursor: pointer;
 		}
+	}
+
+	.cell-rect.grid-drawing {
+		cursor: crosshair;
+	}
+
+	.grid-mode-button {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 0.5rem;
+		padding: 0.5rem 1rem;
+		background: #f3f4f6;
+		border: 1px solid #d1d5db;
+		border-radius: 0.375rem;
+		cursor: pointer;
+		color: #374151;
+		transition: all 0.2s ease;
+		font-size: 0.875rem;
+	}
+
+	.grid-mode-button:hover {
+		background: #e5e7eb;
+		border-color: #9ca3af;
+	}
+
+	.grid-mode-button.active {
+		background: #3b82f6;
+		border-color: #2563eb;
+		color: white;
+	}
+
+	.grid-mode-button.active:hover {
+		background: #2563eb;
+	}
+
+	.grid-mode-label {
+		font-weight: 500;
 	}
 
 	.letter-text.correct {

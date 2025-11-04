@@ -2,6 +2,7 @@
 	// Svelte stuff
 	import { onMount, tick } from "svelte";
 	// Types
+	import type { CrosswordQuestion } from "$lib/types/Crossword";
 	import type { XD } from "$lib/types/XD";
 	import type { Question as QuestionType } from "$lib/types/Question";
 	import type { CrosswordData } from "$lib/types/Crossword";
@@ -61,10 +62,21 @@
 		copyright: "",
 		grid: [...Array(size)].map(e => Array(size)),
 		clues: {
-			across: [],
-			down: [],
+			across: [...Array(size)].map((e, i) => ({
+				direction: 0,
+				alpha_number: `A${i === 0 ? 1 : i + 15}`,
+				clue: "",
+				answer: ""
+			})),
+				down: [...Array(size)].map((e, i) => ({
+				direction: 1,
+				alpha_number: `D${(i + 1)}`,
+				clue: "",
+				answer: ""
+			})),
 		},
 	});
+	console.log(data);
 	let instructionsVisible: boolean = $state(false);
 	let editMode: boolean = $state(true);
 	let currentDirection = $state("across");
@@ -95,7 +107,19 @@
 		}
 		
 		size = 15;
-		grid = [...Array(15)].map(e => Array(15).fill(" "));
+		grid = [...Array(size)].map(e => Array(size).fill(" "));
+		let acrossQuestions: CrosswordQuestion[] = [...Array(15)].map((e, i) => ({
+			direction: 0,
+			alpha_number: `A${(i + 1)}`,
+			clue: "",
+			answer: ""
+		}));
+		let downQuestions: CrosswordQuestion[] = [...Array(15)].map((e, i) => ({
+			direction: 1,
+			alpha_number: `D${(i + 1)}`,
+			clue: "",
+			answer: ""
+		}));
 		data = {
 			title: "",
 			author: "",
@@ -103,10 +127,10 @@
 			difficulty: "Medium",
 			type: "Straight",
 			copyright: "",
-			grid: [...Array(15)].map(e => Array(15).fill(" ")),
+			grid: [...Array(size)].map(e => Array(size).fill(" ")),
 			clues: {
-				across: [],
-				down: [],
+				across: acrossQuestions,
+				down: downQuestions,
 			},
 		};
 		currentDirection = "across";
@@ -358,7 +382,7 @@
 			<!-- <div>
 				<Menu onReset="{ handleReset }" onInstructions="{ handleInstructions }" />
 			</div> -->
-			<CrosswordGrid crosswordData={data} editMode={editMode} debug={true} />
+			<CrosswordGrid bind:crosswordData={data} editMode={editMode} debug={true} />
 		</div>
 		
 		<textarea id="xd" name="xd" class="w-full h-96 border border-gray-300 p-4 mt-4" bind:value="{xd}" style:display="{displayXd ? 'block' : 'none'}"></textarea>
