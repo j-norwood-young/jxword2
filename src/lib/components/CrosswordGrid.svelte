@@ -7,10 +7,12 @@
 		GameState as GameStateType,
 		CrosswordQuestion as CrosswordQuestionType
 	} from '$lib/types/Crossword';
+	import { isStartOfAcross, isStartOfDown, generateAcrossScalar, generateDownScalar } from '$lib/libs/crossword_utils.js';
 	import MobileKeyboard from './MobileKeyboard.svelte';
 	import MobileQuestionPanel from './MobileQuestionPanel.svelte';
 	import HamburgerMenu from './HamburgerMenu.svelte';
 	import { suggest } from '$lib/suggestions/suggest.js';
+	import { simpleAutofill, findEmptyWords, getWordPattern } from '$lib/autofill/autofill.js';
 
 	function focus(node: HTMLInputElement) {
 		node.focus();
@@ -108,122 +110,9 @@
 	let fontSize = $derived(cellWidth * fontRatio);
 	let totalWidth = $derived(width + margin * 2);
 	let totalHeight = $derived(height + margin * 2);
-	let scalarAcross: CrosswordBlockType[] = $derived.by(() => {
-		let questionNumber = 1;
-		let acrossQuestionNumber = 0;
-		let across: CrosswordBlockType[] = [];
-		let letterIndex = 0;
-		let index = 0;
-		if (!crosswordData.grid || rows === 0 || cols === 0) return across;
-		for (let y = 0; y < rows; y++) {
-			for (let x = 0; x < cols; x++) {
-				if (!crosswordData.grid[y] || crosswordData.grid[y][x] === '#') continue;
-				let localQuestionNumber = questionNumber;
-				if (isStartOfAcross(x, y) || isStartOfDown(x, y)) {
-					questionNumber++;
-				}
-				// If it's only one cell with a # on the left and right, or a # on the left and wall on the right, or a # on the right and wall on the left, then it's a start of an across word
-				if (x === 0 && crosswordData.grid[y]?.[x + 1] === '#') {
-					continue;
-				}
-				if (x === cols - 1 && crosswordData.grid[y]?.[x - 1] === '#') {
-					continue;
-				}
-				if (crosswordData.grid[y]?.[x - 1] === '#' && crosswordData.grid[y]?.[x + 1] === '#') {
-					continue;
-				}
-				if (isStartOfAcross(x, y)) {
-					acrossQuestionNumber = localQuestionNumber;
-					letterIndex = 0;
-				} else {
-					letterIndex++;
-				}
-				const acrossQuestion = crosswordData.clues.across[index];
-				const block: CrosswordBlockType = {
-					x: x,
-					y: y,
-					direction: 0,
-					letter: crosswordData.grid[y][x],
-					current_letter: grid[y][x],
-					startOfWord: isStartOfAcross(x, y),
-					letter_index: letterIndex,
-					question_index: index,
-					question: {
-						direction: 0,
-						number: acrossQuestionNumber,
-						alpha_number: `A${acrossQuestionNumber}`,
-						clue: acrossQuestion?.clue || '',
-						answer: acrossQuestion?.answer || ''
-					},
-					correct: crosswordData.grid[y][x] === grid[y][x]
-				};
-				across.push(block);
-				if (isStartOfAcross(x, y)) {
-					index++;
-				}
-			}
-		}
-		return across;
-	});
+	let scalarAcross: CrosswordBlockType[] = $derived.by(() => generateAcrossScalar(crosswordData.grid, crosswordData.clues));
 
-	let scalarDown: CrosswordBlockType[] = $derived.by(() => {
-		if (!crosswordData.grid || rows === 0 || cols === 0) return [];
-		let questionNumber = 1;
-		let downQuestionNumber = 0;
-		let down: CrosswordBlockType[] = [];
-		let letterIndex = 0;
-		let index = 0;
-		for (let y = 0; y < rows; y++) {
-			for (let x = 0; x < cols; x++) {
-				if (!crosswordData.grid[y] || crosswordData.grid[y][x] === '#') continue;
-				let localQuestionNumber = questionNumber;
-				if (isStartOfDown(x, y) || isStartOfAcross(x, y)) {
-					questionNumber++;
-				}
-				// If it's only one cell with a # on the top and bottom, or a # on the top and wall on the bottom, or a # on the bottom and wall on the top, then it's a start of an across word
-				if (y === 0 && crosswordData.grid[y + 1]?.[x] === '#') {
-					continue;
-				}
-				if (y === rows - 1 && crosswordData.grid[y - 1]?.[x] === '#') {
-					continue;
-				}
-				if (crosswordData.grid[y - 1]?.[x] === '#' && crosswordData.grid[y + 1]?.[x] === '#') {
-					continue;
-				}
-				if (isStartOfDown(x, y)) {
-					downQuestionNumber = localQuestionNumber;
-					const downQuestion = crosswordData.clues.down[index];
-					letterIndex = 0;
-					while (
-						crosswordData.grid[y + letterIndex]?.[x] !== '#' &&
-						crosswordData.grid[y + letterIndex]?.[x] !== undefined
-					) {
-						down.push({
-							x: x,
-							y: y + letterIndex,
-							direction: 0,
-							letter: crosswordData.grid[y + letterIndex][x],
-							current_letter: grid[y + letterIndex][x],
-							startOfWord: isStartOfDown(x, y + letterIndex),
-							letter_index: letterIndex,
-							question_index: index,
-							question: {
-								direction: 1,
-								number: downQuestionNumber,
-								clue: downQuestion?.clue || '',
-								answer: downQuestion?.answer || '',
-								alpha_number: `D${downQuestionNumber}`
-							},
-							correct: crosswordData.grid[y + letterIndex][x] === grid[y + letterIndex][x]
-						});
-						letterIndex++;
-					}
-					index++;
-				}
-			}
-		}
-		return down;
-	});
+	let scalarDown: CrosswordBlockType[] = $derived.by(() => generateDownScalar(crosswordData.grid, crosswordData.clues));
 
 	let acrossQuestions: CrosswordQuestionType[] = $derived.by(() => {
 		// Create an array of questions from our grid
@@ -351,6 +240,10 @@
 	let isDrawing = $state(false);
 	let drawingAction: 'fill' | 'erase' | null = $state(null);
 	let lastDrawnCell: [number, number] | null = $state(null);
+
+	// Fill mode (autofill)
+	let fillMode = $state(false);
+	let isAutofilling = $state(false);
 
 	// Timer
 	let timerInterval: ReturnType<typeof setInterval> | null = null;
@@ -783,13 +676,15 @@
 		}
 
 		const hasLetter: boolean = !!grid[currentCell[1]][currentCell[0]];
-		grid[currentCell[1]][currentCell[0]] = letter;
-		grid = [...grid];
-
-		// In edit mode, also update the underlying crosswordData grid
+		
+		// In edit mode, update the underlying crosswordData grid
 		if (editMode) {
 			crosswordData.grid[currentCell[1]][currentCell[0]] = letter;
 			crosswordData = { ...crosswordData };
+		} else {
+			// In play mode, update the local grid
+			grid[currentCell[1]][currentCell[0]] = letter;
+			grid = [...grid];
 		}
 
 		// Clear incorrect marking when user types a new letter
@@ -1175,6 +1070,7 @@
 	function handleCellClick(col: number, row: number) {
 		// Don't handle normal clicks when in grid drawing mode
 		if (gridDrawingMode && editMode) return;
+		// In fill mode, clicks still work for navigation - autofill is only triggered by button
 		
 		if (col === currentCell[0] && row === currentCell[1]) {
 			changeDirection();
@@ -1447,24 +1343,6 @@
 		return startOfCurrentWord;
 	}
 
-	function isStartOfAcross(x: number, y: number) {
-		if (crosswordData.grid[y][x] === '#') return false; // If the cell is a wall, return false
-		if (crosswordData.grid[y]?.[x + 1] === undefined) return false; // If the cell is the last column, return false
-		if (x === 0 && crosswordData.grid[y]?.[x + 1] == '#') return false; // If the cell is the first column and the cell to the right is a wall, return false
-		if (crosswordData.grid[y]?.[x + 1] === '#') return false; // If the cell to the right is a wall, return false
-		if (x === 0 || crosswordData.grid[y]?.[x - 1] == '#') return true; // If the cell is the first column or the cell to the left is a wall, return true
-		return false; // If the cell is not a start of an across word, return false
-	}
-
-	function isStartOfDown(x: number, y: number) {
-		if (crosswordData.grid[y]?.[x] === '#') return false; // If the cell is a wall, return false
-		if (crosswordData.grid[y + 1]?.[x] === undefined) return false; // If the cell is the last row, return false
-		if (y === 0 && crosswordData.grid[y + 1]?.[x] == '#') return false; // If the cell is the first row and the cell below is a wall, return false
-		if (crosswordData.grid[y + 1]?.[x] === '#') return false; // If the cell below is a wall, return false
-		if (y === 0 || crosswordData.grid[y - 1]?.[x] == '#') return true; // If the cell is the first row or the cell above is a wall, return true
-		return false; // If the cell is not a start of a down word, return false
-	}
-
 	function getCurrentWordPattern() {
 		if (!currentQuestion) return '';
 		const scalar = direction ? scalarDown : scalarAcross;
@@ -1649,7 +1527,7 @@
 	}
 
 	function getNumber(x: number, y: number) {
-		if (!isStartOfAcross(x, y) && !isStartOfDown(x, y)) {
+		if (!isStartOfAcross(crosswordData.grid, x, y) && !isStartOfDown(crosswordData.grid, x, y)) {
 			return null;
 		}
 
@@ -1659,7 +1537,7 @@
 				if (x === c && y === r) {
 					return num;
 				}
-				if (isStartOfAcross(c, r) || isStartOfDown(c, r)) {
+				if (isStartOfAcross(crosswordData.grid, c, r) || isStartOfDown(crosswordData.grid, c, r)) {
 					num++;
 				}
 			}
@@ -1807,6 +1685,55 @@
 				console.error('Failed to copy text: ', err);
 			});
 	}
+
+	async function handleAutofill() {
+		if (!editMode || isAutofilling) return;
+		
+		isAutofilling = true;
+		
+		try {
+			console.log('Starting autofill...');
+			console.log('Grid size:', crosswordData.grid.length, 'x', crosswordData.grid[0]?.length);
+			console.log('scalarAcross length:', scalarAcross.length);
+			console.log('scalarDown length:', scalarDown.length);
+			console.log('scalarAcross blocks with startOfWord:', scalarAcross.filter(b => b.startOfWord).length);
+			console.log('scalarDown blocks with startOfWord:', scalarDown.filter(b => b.startOfWord).length);
+			
+			const emptyWordsBefore = findEmptyWords(crosswordData.grid, scalarAcross, scalarDown);
+			console.log('Empty words count before:', emptyWordsBefore.length);
+			
+			// Debug: show what patterns we're finding
+			for (const block of scalarAcross.filter(b => b.startOfWord)) {
+				const pattern = getWordPattern(crosswordData.grid, scalarAcross, block);
+				console.log(`Across word ${block.question.alpha_number}: pattern="${pattern}", length=${pattern.length}`);
+			}
+			for (const block of scalarDown.filter(b => b.startOfWord)) {
+				const pattern = getWordPattern(crosswordData.grid, scalarDown, block);
+				console.log(`Down word ${block.question.alpha_number}: pattern="${pattern}", length=${pattern.length}`);
+			}
+			
+			const result = await simpleAutofill(
+				crosswordData,
+				scalarAcross,
+				scalarDown
+			);
+			
+			console.log('Autofill result:', result);
+			console.log(`Completed: ${result.success ? 'Yes' : 'No'}, Iterations: ${result.iterations}`);
+			
+			// Update the grid with autofilled words - create new arrays for reactivity
+			crosswordData.grid = result.grid.map((row) => [...row]);
+			crosswordData = { ...crosswordData };
+			
+			const emptyWordsAfter = findEmptyWords(crosswordData.grid, scalarAcross, scalarDown);
+			console.log('Empty words count after:', emptyWordsAfter.length);
+			console.log(`Autofilled ${result.filledCount} words`);
+		} catch (error) {
+			console.error('Autofill error:', error);
+		} finally {
+			isAutofilling = false;
+		}
+	}
 </script>
 
 <svelte:window 
@@ -1861,6 +1788,23 @@
 							<label for="grid-symmetry" class="grid-symmetry-label">Symmetry</label>
 						</div>
 					</div>
+					<div class="fill-mode-controls" class:hidden={!fillMode}>
+						<button
+							class="autofill-button"
+							onclick={handleAutofill}
+							disabled={isAutofilling}
+							title="Autofill crossword with matching words"
+						>
+							{#if isAutofilling}
+								<span>Autofilling...</span>
+							{:else}
+								<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+									<path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+								</svg>
+								<span>Autofill</span>
+							{/if}
+						</button>
+					</div>
 				{/if}
 
 				<!-- Autocheck indicator in the middle -->
@@ -1882,7 +1826,10 @@
 						<button 
 							class="grid-mode-button"
 							class:active={gridDrawingMode}
-							onclick={() => gridDrawingMode = !gridDrawingMode}
+							onclick={() => {
+								gridDrawingMode = !gridDrawingMode;
+								if (gridDrawingMode) fillMode = false;
+							}}
 							onkeydown={(e) => e.key === 'Enter' && (gridDrawingMode = !gridDrawingMode)}
 							title={gridDrawingMode ? 'Exit Grid Mode' : 'Enter Grid Mode'}
 						>
@@ -1891,6 +1838,21 @@
 								<path d="M3 9h18M3 15h18M9 3v18M15 3v18" />
 							</svg>
 							<span class="grid-mode-label">{gridDrawingMode ? 'Grid Mode On' : 'Grid Mode'}</span>
+						</button>
+						<button 
+							class="fill-mode-button"
+							class:active={fillMode}
+							onclick={() => {
+								fillMode = !fillMode;
+								if (fillMode) gridDrawingMode = false;
+							}}
+							onkeydown={(e) => e.key === 'Enter' && (fillMode = !fillMode)}
+							title={fillMode ? 'Exit Fill Mode' : 'Enter Fill Mode'}
+						>
+							<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+								<path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+							</svg>
+							<span class="fill-mode-label">{fillMode ? 'Fill Mode On' : 'Fill Mode'}</span>
 						</button>
 					</div>
 				{:else}
@@ -2770,6 +2732,87 @@
 
 	.grid-mode-label {
 		font-weight: 500;
+	}
+
+	.fill-mode-button {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 0.5rem;
+		padding: 0.5rem 1rem;
+		background: #f3f4f6;
+		border: 1px solid #d1d5db;
+		border-radius: 0.375rem;
+		cursor: pointer;
+		color: #374151;
+		transition: all 0.2s ease;
+		font-size: 0.875rem;
+	}
+
+	.fill-mode-button:hover {
+		background: #e5e7eb;
+		border-color: #9ca3af;
+	}
+
+	.fill-mode-button.active {
+		background: #10b981;
+		border-color: #059669;
+		color: white;
+	}
+
+	.fill-mode-button.active:hover {
+		background: #059669;
+	}
+
+	.fill-mode-label {
+		font-weight: 500;
+	}
+
+	.fill-mode-controls {
+		display: flex;
+		align-items: center;
+		gap: 1rem;
+		margin-right: 0.5rem;
+		padding: 0.25rem 0.5rem;
+		background: #f9fafb;
+		border: 1px solid #e5e7eb;
+		border-radius: 0.375rem;
+		flex: 0 0 auto;
+		visibility: visible;
+		opacity: 1;
+		transition: opacity 0.2s ease, visibility 0.2s ease;
+	}
+
+	.fill-mode-controls.hidden {
+		visibility: hidden;
+		opacity: 0;
+		pointer-events: none;
+	}
+
+	.autofill-button {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 0.5rem;
+		padding: 0.5rem 1rem;
+		background: #10b981;
+		border: 1px solid #059669;
+		border-radius: 0.375rem;
+		cursor: pointer;
+		color: white;
+		transition: all 0.2s ease;
+		font-size: 0.875rem;
+		font-weight: 500;
+	}
+
+	.autofill-button:hover:not(:disabled) {
+		background: #059669;
+		border-color: #047857;
+	}
+
+	.autofill-button:disabled {
+		opacity: 0.6;
+		cursor: not-allowed;
 	}
 
 	.grid-mode-controls {
