@@ -60,7 +60,7 @@
         max="30" 
         bind:value="{size}" 
         onchange="{handleStateChange}"
-        class="min-w-96"
+        class="w-full max-w-xs"
     >
     <label for="size" class="mt-1 text-sm text-gray-500">{`${current_size?.name} ${size}x${size}`}</label>
 </main>

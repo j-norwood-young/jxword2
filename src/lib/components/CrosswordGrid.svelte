@@ -26,8 +26,19 @@
 	}
 
 	interface Props {
-		crosswordData: CrosswordType;
-		editMode?: boolean;
+		grid: string[][];
+		clues: {
+			across: CrosswordQuestionType[];
+			down: CrosswordQuestionType[];
+		};
+		title?: string;
+		author?: string;
+		date?: string;
+		difficulty?: string;
+		type?: string;
+		copyright?: string;
+		editor?: string;
+		mode?: 'play' | 'edit' | 'grid';
 		width?: number;
 		height?: number;
 		outerBorderWidth?: number;
@@ -57,17 +68,16 @@
 	}
 
 	let {
-		crosswordData = $bindable({
-			title: '',
-			author: '',
-			date: '',
-			difficulty: '',
-			type: '',
-			copyright: '',
-			grid: [],
-			clues: { across: [], down: [] }
-		}),
-		editMode = false,
+		grid = $bindable([] as string[][]),
+		clues = $bindable({ across: [], down: [] } as { across: CrosswordQuestionType[]; down: CrosswordQuestionType[] }),
+		title = '',
+		author = '',
+		date = '',
+		difficulty = '',
+		type = '',
+		copyright = '',
+		editor = '',
+		mode = 'play',
 		width = 500,
 		height = 500,
 		outerBorderWidth = 1.5,
@@ -96,13 +106,11 @@
 		onprogress = () => {}
 	}: Props = $props();
 
+	// Derived editMode for backward compatibility
+	let editMode = $derived(mode === 'edit' || mode === 'grid');
+	let gridDrawingMode = $derived(mode === 'grid');
+
 	// Derived properties
-	let grid: string[][] = $derived.by(() => {
-		if (editMode) return crosswordData.grid;
-		return crosswordData.grid.map((row: string[]) =>
-			row.map((cell: string) => (cell === '#' ? '#' : ''))
-		);
-	});
 	let rows = $derived(grid.length || 0);
 	let cols = $derived(grid[0]?.length || 0);
 	let cellWidth = $derived(width / cols);
@@ -110,9 +118,9 @@
 	let fontSize = $derived(cellWidth * fontRatio);
 	let totalWidth = $derived(width + margin * 2);
 	let totalHeight = $derived(height + margin * 2);
-	let scalarAcross: CrosswordBlockType[] = $derived.by(() => generateAcrossScalar(crosswordData.grid, crosswordData.clues));
+	let scalarAcross: CrosswordBlockType[] = $derived.by(() => generateAcrossScalar(grid, clues));
 
-	let scalarDown: CrosswordBlockType[] = $derived.by(() => generateDownScalar(crosswordData.grid, crosswordData.clues));
+	let scalarDown: CrosswordBlockType[] = $derived.by(() => generateDownScalar(grid, clues));
 
 	let acrossQuestions: CrosswordQuestionType[] = $derived.by(() => {
 		// Create an array of questions from our grid
@@ -138,22 +146,23 @@
 	});
 
 	function ensureAllQuestions() {
-		// Makes sure that we have all the questions in the crosswordData based on our scalars
+		// Makes sure that we have all the questions in the crossword data based on our scalars
 		let changed = false;
 		scalarAcross.forEach(cell => {
-			if (!crosswordData.clues.across.some(q => q.alpha_number === cell.question.alpha_number)) {
-				crosswordData.clues.across.push(cell.question);
+			if (!clues.across.some(q => q.alpha_number === cell.question.alpha_number)) {
+				clues.across.push(cell.question);
 				changed = true;
 			}
 		});
 		scalarDown.forEach(cell => {
-			if (!crosswordData.clues.down.some(q => q.alpha_number === cell.question.alpha_number)) {
-				crosswordData.clues.down.push(cell.question);
+			if (!clues.down.some(q => q.alpha_number === cell.question.alpha_number)) {
+				clues.down.push(cell.question);
 				changed = true;
 			}
 		});
 		if (changed) {
-			crosswordData = { ...crosswordData };
+			clues = { ...clues };
+			grid = [...grid];
 		}
 	}
 
@@ -195,7 +204,10 @@
 
 	// Cell fill colors for reactivity
 	function cellFill(col: number, row: number): string {
-		if (crosswordData.grid[row][col] === '#') {
+		if (grid[row][col] === '#') {
+			if (editMode && currentCell[0] === col && currentCell[1] === row) {
+				return selectCellColour;
+			}
 			return fillColour;
 		}
 		if (col === currentCell[0] && row === currentCell[1]) {
@@ -218,9 +230,20 @@
 
 	// UI state
 	let isHidden = $state(false);
-	let isPaused = $state(!editMode); // Start in pause mode
-	let showOverlay = $state(!editMode); // Show overlay initially
+	let isPaused = $state(true); // Start in pause mode
+	let showOverlay = $state(true); // Show overlay initially
 	let overlayType = $state('paused' as 'paused' | 'complete' | 'meta');
+	
+	// Update pause/overlay state when mode changes
+	$effect(() => {
+		if (mode === 'play') {
+			isPaused = true;
+			showOverlay = true;
+		} else {
+			isPaused = false;
+			showOverlay = false;
+		}
+	});
 	let showMenu = $state(false);
 	let lastQuartile = $state(0);
 	let storageName = $state('');
@@ -235,14 +258,12 @@
 	let xShareUrl = $state('');
 	let whatsappShareUrl = $state('');
 
-	// Grid drawing mode
-	let gridDrawingMode = $state(false);
+	// Grid drawing state
 	let isDrawing = $state(false);
 	let drawingAction: 'fill' | 'erase' | null = $state(null);
 	let lastDrawnCell: [number, number] | null = $state(null);
 
-	// Fill mode (autofill)
-	let fillMode = $state(false);
+	// Autofill state
 	let isAutofilling = $state(false);
 
 	// Timer
@@ -356,21 +377,21 @@
 	// Debug logging
 	$effect(() => {
 		if (!debug) return;
-		console.log('crosswordData:', $state.snapshot(crosswordData));
+		console.log('clues:', $state.snapshot(clues));
+		console.log('grid:', $state.snapshot(grid));
 		console.log('acrossQuestions:', $state.snapshot(acrossQuestions));
 		console.log('downQuestions:', $state.snapshot(downQuestions));
 		console.log('currentQuestion:', $state.snapshot(currentQuestion));
-		// console.log('localState:', $state.snapshot(localState));
 		// console.log('grid:', $state.snapshot(grid));
-		console.log('scalarAcross:', $state.snapshot(scalarAcross));
-		console.log('scalarDown:', $state.snapshot(scalarDown));
+		// console.log('scalarAcross:', $state.snapshot(scalarAcross));
+		// console.log('scalarDown:', $state.snapshot(scalarDown));
 		// console.log('currentCell:', $state.snapshot(currentCell));
 	});
 
 	// Sync size prop with grid size on load
 	$effect(() => {
-		if (editMode && crosswordData.grid.length > 0) {
-			const gridSize = crosswordData.grid.length;
+		if (editMode && grid.length > 0) {
+			const gridSize = grid.length;
 			if (size !== gridSize) {
 				size = gridSize;
 			}
@@ -388,7 +409,7 @@
 			}
 			
 			// Initialize grid size if needed
-			if (editMode && size && crosswordData.grid.length === 0) {
+			if (editMode && size && grid.length === 0) {
 				const newGrid: string[][] = [];
 				for (let y = 0; y < size; y++) {
 					newGrid[y] = [];
@@ -396,10 +417,9 @@
 						newGrid[y][x] = '';
 					}
 				}
-				crosswordData.grid = newGrid;
-				crosswordData = { ...crosswordData };
-			} else if (editMode && size && crosswordData.grid.length > 0 && 
-			          (crosswordData.grid.length !== size || crosswordData.grid[0]?.length !== size)) {
+				grid = newGrid;
+			} else if (editMode && size && grid.length > 0 && 
+			          (grid.length !== size || grid[0]?.length !== size)) {
 				// Sync grid size to size prop
 				handleSizeChange(size);
 			}
@@ -570,9 +590,9 @@
 	}
 
 	function checkTile(x: number, y: number) {
-		if (crosswordData.grid[y][x] === '#') return;
+		if (grid[y][x] === '#') return;
 		if (correctGrid[y][x]) return;
-		if (crosswordData.grid[y][x] === grid[y][x]) {
+		if (grid[y][x] === grid[y][x]) {
 			correctGrid[y][x] = true;
 			incorrectGrid[y][x] = false; // Clear incorrect if it was marked
 		} else if (grid[y][x] && grid[y][x] !== '') {
@@ -679,8 +699,7 @@
 		
 		// In edit mode, update the underlying crosswordData grid
 		if (editMode) {
-			crosswordData.grid[currentCell[1]][currentCell[0]] = letter;
-			crosswordData = { ...crosswordData };
+			grid[currentCell[1]][currentCell[0]] = letter;
 		} else {
 			// In play mode, update the local grid
 			grid[currentCell[1]][currentCell[0]] = letter;
@@ -707,8 +726,7 @@
 			grid[currentCell[1]][currentCell[0]] = '';
 			grid = [...grid];
 			// Also update the underlying crosswordData grid
-			crosswordData.grid[currentCell[1]][currentCell[0]] = '';
-			crosswordData = { ...crosswordData };
+			grid[currentCell[1]][currentCell[0]] = '';
 			moveToPreviousLetter();
 			return;
 		}
@@ -1083,19 +1101,19 @@
 
 	function handleCellDoubleClick(col: number, row: number) {
 		if (!editMode) return;
-		if (crosswordData.grid[row][col] !== '' && crosswordData.grid[row][col] !== '#') return;
+		if (grid[row][col] !== '' && grid[row][col] !== '#') return;
 		toggleCell(col, row);
 	}
 
 	function toggleCell(x: number, y: number) {
 		if (!editMode) return;
-		const wasBlack = crosswordData.grid[y][x] === '#';
+		const wasBlack = grid[y][x] === '#';
 		const action = wasBlack ? 'erase' : 'fill';
 		
 		if (wasBlack) {
-			crosswordData.grid[y][x] = '';
+			grid[y][x] = '';
 		} else {
-			crosswordData.grid[y][x] = '#';
+			grid[y][x] = '#';
 		}
 		
 		// Apply symmetry if enabled
@@ -1103,21 +1121,20 @@
 			applySymmetry(x, y, action);
 		}
 		
-		grid = [...crosswordData.grid];
-		crosswordData = { ...crosswordData };
+		grid = [...grid];
 	}
 
 	function handleCellMouseDown(col: number, row: number, event: MouseEvent) {
 		if (!editMode || !gridDrawingMode) return;
 		
 		// Only start drawing on cells that can be toggled (empty or black squares)
-		if (crosswordData.grid[row][col].trim() !== '' && crosswordData.grid[row][col].trim() !== '#') return;
+		if (grid[row][col].trim() !== '' && grid[row][col].trim() !== '#') return;
 
 		event.preventDefault();
 		isDrawing = true;
 		
 		// Determine the action based on the initial cell state
-		const isBlack = crosswordData.grid[row][col] === '#';
+		const isBlack = grid[row][col] === '#';
 		drawingAction = isBlack ? 'erase' : 'fill';
 		
 		// Apply the action to the initial cell
@@ -1129,7 +1146,7 @@
 		if (!editMode || !gridDrawingMode || !isDrawing || !drawingAction) return;
 		
 		// Only draw on cells that can be toggled
-		if (crosswordData.grid[row][col].trim() !== '' && crosswordData.grid[row][col].trim() !== '#') return;
+		if (grid[row][col].trim() !== '' && grid[row][col].trim() !== '#') return;
 		
 		// Prevent drawing on the same cell multiple times
 		if (lastDrawnCell && lastDrawnCell[0] === col && lastDrawnCell[1] === row) return;
@@ -1151,12 +1168,12 @@
 		if (!drawingAction) return;
 		
 		if (drawingAction === 'fill') {
-			if (crosswordData.grid[y][x] !== '#') {
-				crosswordData.grid[y][x] = '#';
+			if (grid[y][x] !== '#') {
+				grid[y][x] = '#';
 			}
 		} else if (drawingAction === 'erase') {
-			if (crosswordData.grid[y][x] === '#') {
-				crosswordData.grid[y][x] = '';
+			if (grid[y][x] === '#') {
+				grid[y][x] = '';
 			}
 		}
 		
@@ -1165,8 +1182,7 @@
 			applySymmetry(x, y, drawingAction);
 		}
 		
-		grid = [...crosswordData.grid];
-		crosswordData = { ...crosswordData };
+		grid = [...grid];
 	}
 
 	function applySymmetry(x: number, y: number, action: 'fill' | 'erase') {
@@ -1179,12 +1195,12 @@
 		
 		// Apply the same action to the symmetric cell
 		if (action === 'fill') {
-			if (crosswordData.grid[symY] && crosswordData.grid[symY][symX] !== '#') {
-				crosswordData.grid[symY][symX] = '#';
+			if (grid[symY] && grid[symY][symX] !== '#') {
+				grid[symY][symX] = '#';
 			}
 		} else if (action === 'erase') {
-			if (crosswordData.grid[symY] && crosswordData.grid[symY][symX] === '#') {
-				crosswordData.grid[symY][symX] = '';
+			if (grid[symY] && grid[symY][symX] === '#') {
+				grid[symY][symX] = '';
 			}
 		}
 	}
@@ -1199,7 +1215,7 @@
 		// Resize the grid
 		if (newSize > oldSize) {
 			// Expand grid
-			const currentGrid = crosswordData.grid;
+			const currentGrid = grid;
 			const newGrid: string[][] = [];
 			
 			for (let y = 0; y < newSize; y++) {
@@ -1213,22 +1229,21 @@
 				}
 			}
 			
-			crosswordData.grid = newGrid;
+			grid = newGrid;
 		} else {
 			// Shrink grid
 			const newGrid: string[][] = [];
 			for (let y = 0; y < newSize; y++) {
 				newGrid[y] = [];
 				for (let x = 0; x < newSize; x++) {
-					newGrid[y][x] = crosswordData.grid[y]?.[x] || '';
+					newGrid[y][x] = grid[y]?.[x] || '';
 				}
 			}
 			
-			crosswordData.grid = newGrid;
+			grid = newGrid;
 		}
 		
-		grid = [...crosswordData.grid];
-		crosswordData = { ...crosswordData };
+		grid = [...grid];
 	}
 
 	function formatTime(t: number) {
@@ -1382,13 +1397,12 @@
 		if (!editingQuestion) return;
 		const clue = editingClueText;
 		const questionList = editingQuestion.direction === 1 
-			? crosswordData.clues.down 
-			: crosswordData.clues.across;
+			? clues.down 
+			: clues.across;
 		const questionIndex = questionList.findIndex(q => q.alpha_number === editingQuestion!.alpha_number);
 		if (questionIndex !== -1) {
 			questionList[questionIndex].clue = clue;
 			// Trigger reactivity
-			crosswordData = { ...crosswordData };
 		} else {
 			questionList.push({
 				direction: editingQuestion!.direction,
@@ -1396,7 +1410,6 @@
 				clue: clue,
 				answer: getCurrentWordPattern()
 			});
-			crosswordData = { ...crosswordData };
 			
 		}
 		
@@ -1420,8 +1433,8 @@
 
 	function findNextQuestion(current: { direction: number; alpha_number: string }): CrosswordQuestionType | null {
 		const currentList = current.direction === 1 
-			? crosswordData.clues.down 
-			: crosswordData.clues.across;
+			? clues.down 
+			: clues.across;
 		const currentIndex = currentList.findIndex(q => q.alpha_number === current.alpha_number);
 		
 		if (currentIndex === -1) return null;
@@ -1433,8 +1446,8 @@
 		
 		// If at the end of current list, try the first question in the other direction
 		const otherList = current.direction === 1 
-			? crosswordData.clues.across 
-			: crosswordData.clues.down;
+			? clues.across 
+			: clues.down;
 		if (otherList.length > 0) {
 			return { ...otherList[0], direction: current.direction === 1 ? 0 : 1 };
 		}
@@ -1468,11 +1481,10 @@
 		grid = [...grid];
 		
 		// Update the answer in the question
-		const questionList = direction ? crosswordData.clues.down : crosswordData.clues.across;
+		const questionList = direction ? clues.down : clues.across;
 		const questionIndex = questionList.findIndex(q => q.alpha_number === currentQuestion.alpha_number);
 		if (questionIndex !== -1) {
 			questionList[questionIndex].answer = suggestion;
-			crosswordData = { ...crosswordData };
 		}
 	}
 
@@ -1491,16 +1503,14 @@
 		grid = [...grid];
 		
 		// Update the underlying crosswordData grid as well
-		crosswordData.grid[cell.y][cell.x] = letter === '' ? '' : letter.toUpperCase();
-		crosswordData = { ...crosswordData };
+		grid[cell.y][cell.x] = letter === '' ? '' : letter.toUpperCase();
 		
 		// Update answer
 		const pattern = getCurrentWordPattern();
-		const questionList = direction ? crosswordData.clues.down : crosswordData.clues.across;
+		const questionList = direction ? clues.down : clues.across;
 		const questionIndex = questionList.findIndex(q => q.alpha_number === currentQuestion.alpha_number);
 		if (questionIndex !== -1) {
 			questionList[questionIndex].answer = pattern;
-			crosswordData = { ...crosswordData };
 		}
 	}
 
@@ -1515,7 +1525,7 @@
 
 	function getCellClass(x: number, y: number) {
 		let classes = ['cell'];
-		if (crosswordData.grid[y][x] === '#') {
+		if (grid[y][x] === '#') {
 			classes.push('blank');
 		} else {
 			classes.push('letter');
@@ -1527,7 +1537,7 @@
 	}
 
 	function getNumber(x: number, y: number) {
-		if (!isStartOfAcross(crosswordData.grid, x, y) && !isStartOfDown(crosswordData.grid, x, y)) {
+		if (!isStartOfAcross(grid, x, y) && !isStartOfDown(grid, x, y)) {
 			return null;
 		}
 
@@ -1537,7 +1547,7 @@
 				if (x === c && y === r) {
 					return num;
 				}
-				if (isStartOfAcross(crosswordData.grid, c, r) || isStartOfDown(crosswordData.grid, c, r)) {
+				if (isStartOfAcross(grid, c, r) || isStartOfDown(grid, c, r)) {
 					num++;
 				}
 			}
@@ -1686,34 +1696,35 @@
 			});
 	}
 
-	async function handleAutofill() {
-		if (!editMode || isAutofilling) return;
+	// Expose autofill function for external use
+	export async function autofill() {
+		if (mode !== 'edit' || isAutofilling) return;
 		
 		isAutofilling = true;
 		
 		try {
 			console.log('Starting autofill...');
-			console.log('Grid size:', crosswordData.grid.length, 'x', crosswordData.grid[0]?.length);
+			console.log('Grid size:', grid.length, 'x', grid[0]?.length);
 			console.log('scalarAcross length:', scalarAcross.length);
 			console.log('scalarDown length:', scalarDown.length);
 			console.log('scalarAcross blocks with startOfWord:', scalarAcross.filter(b => b.startOfWord).length);
 			console.log('scalarDown blocks with startOfWord:', scalarDown.filter(b => b.startOfWord).length);
 			
-			const emptyWordsBefore = findEmptyWords(crosswordData.grid, scalarAcross, scalarDown);
+			const emptyWordsBefore = findEmptyWords(grid, scalarAcross, scalarDown);
 			console.log('Empty words count before:', emptyWordsBefore.length);
 			
 			// Debug: show what patterns we're finding
 			for (const block of scalarAcross.filter(b => b.startOfWord)) {
-				const pattern = getWordPattern(crosswordData.grid, scalarAcross, block);
+				const pattern = getWordPattern(grid, scalarAcross, block);
 				console.log(`Across word ${block.question.alpha_number}: pattern="${pattern}", length=${pattern.length}`);
 			}
 			for (const block of scalarDown.filter(b => b.startOfWord)) {
-				const pattern = getWordPattern(crosswordData.grid, scalarDown, block);
+				const pattern = getWordPattern(grid, scalarDown, block);
 				console.log(`Down word ${block.question.alpha_number}: pattern="${pattern}", length=${pattern.length}`);
 			}
 			
 			const result = await simpleAutofill(
-				crosswordData,
+				{ grid, clues },
 				scalarAcross,
 				scalarDown
 			);
@@ -1722,10 +1733,9 @@
 			console.log(`Completed: ${result.success ? 'Yes' : 'No'}, Iterations: ${result.iterations}`);
 			
 			// Update the grid with autofilled words - create new arrays for reactivity
-			crosswordData.grid = result.grid.map((row) => [...row]);
-			crosswordData = { ...crosswordData };
+			grid = result.grid.map((row) => [...row]);
 			
-			const emptyWordsAfter = findEmptyWords(crosswordData.grid, scalarAcross, scalarDown);
+			const emptyWordsAfter = findEmptyWords(grid, scalarAcross, scalarDown);
 			console.log('Empty words count after:', emptyWordsAfter.length);
 			console.log(`Autofilled ${result.filledCount} words`);
 		} catch (error) {
@@ -1745,7 +1755,7 @@
 	<!-- Print title (only visible when printing) -->
 	{#if printMode !== 'none'}
 		<div class="print-title">
-			<h1>{crosswordData?.title || 'Crossword'}</h1>
+			<h1>{title || 'Crossword'}</h1>
 			<p class="print-mode">{printMode === 'blank' ? 'Print (Blank)' : 'Print (Filled)'}</p>
 		</div>
 	{/if}
@@ -1753,7 +1763,7 @@
 	<div class="play-area">
 		<div class="grid-container">
 			<div class="header">
-				{#if !editMode}
+				{#if mode === 'play'}
 				<nav class="controls">
 					<HamburgerMenu
 						onToggle={() => (showMenu = !showMenu)}
@@ -1764,8 +1774,8 @@
 				</nav>
 				{/if}
 
-				{#if editMode}
-					<div class="grid-mode-controls" class:hidden={!gridDrawingMode}>
+				{#if mode === 'grid'}
+					<div class="grid-mode-controls">
 						<div class="grid-size-control">
 							<label for="grid-size-slider" class="grid-size-label">Size: {size}x{size}</label>
 							<input
@@ -1788,23 +1798,6 @@
 							<label for="grid-symmetry" class="grid-symmetry-label">Symmetry</label>
 						</div>
 					</div>
-					<div class="fill-mode-controls" class:hidden={!fillMode}>
-						<button
-							class="autofill-button"
-							onclick={handleAutofill}
-							disabled={isAutofilling}
-							title="Autofill crossword with matching words"
-						>
-							{#if isAutofilling}
-								<span>Autofilling...</span>
-							{:else}
-								<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-									<path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
-								</svg>
-								<span>Autofill</span>
-							{/if}
-						</button>
-					</div>
 				{/if}
 
 				<!-- Autocheck indicator in the middle -->
@@ -1821,41 +1814,7 @@
 					</div>
 				{/if}
 
-				{#if editMode}
-					<div class="right-controls">
-						<button 
-							class="grid-mode-button"
-							class:active={gridDrawingMode}
-							onclick={() => {
-								gridDrawingMode = !gridDrawingMode;
-								if (gridDrawingMode) fillMode = false;
-							}}
-							onkeydown={(e) => e.key === 'Enter' && (gridDrawingMode = !gridDrawingMode)}
-							title={gridDrawingMode ? 'Exit Grid Mode' : 'Enter Grid Mode'}
-						>
-							<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-								<path d="M3 3h18v18H3z" />
-								<path d="M3 9h18M3 15h18M9 3v18M15 3v18" />
-							</svg>
-							<span class="grid-mode-label">{gridDrawingMode ? 'Grid Mode On' : 'Grid Mode'}</span>
-						</button>
-						<button 
-							class="fill-mode-button"
-							class:active={fillMode}
-							onclick={() => {
-								fillMode = !fillMode;
-								if (fillMode) gridDrawingMode = false;
-							}}
-							onkeydown={(e) => e.key === 'Enter' && (fillMode = !fillMode)}
-							title={fillMode ? 'Exit Fill Mode' : 'Enter Fill Mode'}
-						>
-							<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-								<path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
-							</svg>
-							<span class="fill-mode-label">{fillMode ? 'Fill Mode On' : 'Fill Mode'}</span>
-						</button>
-					</div>
-				{:else}
+				{#if mode === 'play'}
 					<div class="right-controls">
 						<div class="timer">{formatTime(time_taken)}</div>
 						<button class="pause" onclick={pause} onkeydown={(e) => e.key === 'Enter' && pause()}>
@@ -1908,6 +1867,28 @@
 										onmouseup={handleCellMouseUp}
 										onkeydown={(e) => e.key === 'Enter' && handleCellClick(col, row)}
 									/>
+									{#if editMode && grid[row][col] === '#' && !gridDrawingMode}
+										<line
+											class="current-cell-line"
+											x1={cellWidth * col + margin + cellWidth * 0.2}
+											y1={cellHeight * row + margin + cellHeight * 0.2}
+											x2={cellWidth * col + margin + cellWidth * 0.8}
+											y2={cellHeight * row + margin + cellHeight * 0.8}
+											stroke="#999"
+											stroke-width="2"
+											style="pointer-events: none;"
+										/>
+										<line
+											class="current-cell-line"
+											x1={cellWidth * col + margin + cellWidth * 0.8}
+											y1={cellHeight * row + margin + cellHeight * 0.2}
+											x2={cellWidth * col + margin + cellWidth * 0.2}
+											y2={cellHeight * row + margin + cellHeight * 0.8}
+											stroke="#999"
+											stroke-width="2"
+											style="pointer-events: none;"
+										/>
+									{/if}
 									{#if grid[row][col] !== '#'}
 										{#if incorrectGrid && incorrectGrid[row]?.[col] && grid[row][col] !== ''}
 											<line
@@ -2230,20 +2211,20 @@
 				</div>
 			{:else if overlayType === 'meta'}
 				<div class="meta">
-					<div class="overlay-title">{crosswordData?.title || 'Crossword'}</div>
+					<div class="overlay-title">{title || 'Crossword'}</div>
 					<div class="overlay-text">
 						<ul>
-							{#if crosswordData?.author}
-								<li>Author: {crosswordData.author}</li>
+							{#if author}
+								<li>Author: {author}</li>
 							{/if}
-							{#if crosswordData?.date}
-								<li>Date: {new Date(crosswordData.date).toLocaleDateString()}</li>
+							{#if date}
+								<li>Date: {new Date(date).toLocaleDateString()}</li>
 							{/if}
-							{#if crosswordData?.difficulty}
-								<li>Difficulty: {crosswordData.difficulty}</li>
+							{#if difficulty}
+								<li>Difficulty: {difficulty}</li>
 							{/if}
-							{#if crosswordData?.type}
-								<li>Type: {crosswordData.type}</li>
+							{#if type}
+								<li>Type: {type}</li>
 							{/if}
 						</ul>
 					</div>

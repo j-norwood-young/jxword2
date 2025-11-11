@@ -1,10 +1,10 @@
 export type CrosswordData = {
-    title: string;
-    author: string;
-    date: string;
-    difficulty: string;
-    type: string;
-    copyright: string;
+    title?: string;
+    author?: string;
+    date?: string;
+    difficulty?: string;
+    type?: string;
+    copyright?: string;
     editor?: string;
     grid: string[][];
     clues: {
