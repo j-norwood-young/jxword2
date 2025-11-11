@@ -16,9 +16,9 @@
 	import Button from "./Button.svelte";
 	import Input from "./Input.svelte";
 	import Dropdown from "./Dropdown.svelte";
-	import { Download, Trash2, RotateCcw, Edit, Play, MoreVertical, ChevronDown, ChevronUp, Grid3x3, Zap } from "lucide-svelte";
+	import { Download, Trash2, RotateCcw, Edit, Play, MoreVertical, ChevronDown, ChevronUp, Grid3x3, Zap, AlertCircle, X } from "lucide-svelte";
 	// Libraries
-	import { parseCrosswordXML } from "../libs/crossword_xml_parse.js";
+	import { parseCrosswordXML, CrosswordXMLError } from "../libs/crossword_xml_parse";
 	import { saveState, restoreState, clearState } from '../libs/savestate.js';
 	import { XDEncode } from "$lib/libs/xd-encode";
 	import XDParser from "xd-crossword-parser";
@@ -77,6 +77,8 @@
 	let metaExpanded: boolean = $state(false);
 	let fileMenuOpen: boolean = $state(false);
 	let isAutofilling: boolean = $state(false);
+	let errorMessage: string | null = $state(null);
+	let showError: boolean = $state(false);
 
 	// async function handleStateChange() {
 	// 	if (!save_state) return;
@@ -85,6 +87,35 @@
 	// 	xd = XDEncode(localState) || "";
 	// 	gridComponent.handleFocus();
 	// }
+
+	let local_xd = $derived(XDEncode({
+		grid, 
+		questions_across: clues.across.map(q => ({
+			num: parseInt(q.alpha_number.replace(/^A/i, '')) || 0,
+			x: 0,
+			y: 0,
+			question: q.clue,
+			answer: q.answer,
+			editing: false,
+			direction: 'across' as const
+		})), 
+		questions_down: clues.down.map(q => ({
+			num: parseInt(q.alpha_number.replace(/^D/i, '')) || 0,
+			x: 0,
+			y: 0,
+			question: q.clue,
+			answer: q.answer,
+			editing: false,
+			direction: 'down' as const
+		})), 
+		title, 
+		author, 
+		date, 
+		difficulty, 
+		type, 
+		copyright, 
+		editor
+	}));
 
 	onMount(() => {
 		if (xd) {
@@ -226,34 +257,65 @@
 
 	async function loadXML(xml: string) {
 		console.log("loading xml")
+		// Clear any previous errors
+		showError = false;
+		errorMessage = null;
+		
 		try {
-			// const result = parseCrosswordXML(xml);
-			// title = result.title || "";
-			// author = result.creator || "";
-			// editor = result.editor || "";
-			// copyright = result.copyright || "";
-			// size = result.width || 0;
-			// grid = result.grid;
-			// console.log(result);
-			// // Map the questions to include required properties
-			// const mappedAcross = result.questions.across.map((q: any) => ({
-			// 	...q,
-			// 	answer: q.answer || "",
-			// 	editing: false
-			// }));
-			// const mappedDown = result.questions.down.map((q: any) => ({
-			// 	...q,
-			// 	answer: q.answer || "",
-			// 	editing: false
-			// }));
-			// questionsAcross.set(mappedAcross);
-			// questionsDown.set(mappedDown);
-			// gridComponent.setDir("across");
-			// gridComponent.setCurrentPos(0, 0);
-			// await tick();
+			console.log("loading xml", xml);
+			const result = parseCrosswordXML(xml);
+			
+			// Validate result before using it
+			if (!result || !result.grid || !Array.isArray(result.grid) || result.grid.length === 0) {
+				throw new Error("Invalid XML: grid is empty or invalid");
+			}
+			
+			// Ensure grid has at least one row with at least one column
+			if (!result.grid[0] || !Array.isArray(result.grid[0]) || result.grid[0].length === 0) {
+				throw new Error("Invalid XML: grid rows are empty or invalid");
+			}
+			
+			title = result.title || "";
+			author = result.creator || "";
+			editor = result.editor || "";
+			copyright = result.copyright || "";
+			size = result.width || result.grid[0].length || 15;
+			
+			// Ensure size is valid
+			if (size <= 0) {
+				size = Math.max(result.grid.length, result.grid[0]?.length || 15);
+			}
+			
+			grid = result.grid;
+			console.log(result);
+			clues.across = result.questions.across.map((q: any) => ({
+				direction: 0,
+				alpha_number: `${q.num}`,
+				clue: q.question,
+				answer: q.answer
+			}));
+			clues.down = result.questions.down.map((q: any) => ({
+				direction: 1,
+				alpha_number: `${q.num}`,
+				clue: q.question,
+				answer: q.answer
+			}));
 		} catch (e) {
-			console.log(e);
+			console.error("Error loading XML:", e);
+			if (e instanceof CrosswordXMLError) {
+				errorMessage = e.message;
+			} else if (e instanceof Error) {
+				errorMessage = `Failed to load XML file: ${e.message}`;
+			} else {
+				errorMessage = "An unknown error occurred while loading the XML file. Please check the file format and try again.";
+			}
+			showError = true;
 		}
+	}
+	
+	function dismissError() {
+		showError = false;
+		errorMessage = null;
 	}
 
 	function handleInstructions() {
@@ -262,11 +324,12 @@
 
 	function downloadXD() {
 		// Download contents of xd
-		// const file = new Blob([dataxd], {type: "text/plain;charset=utf-8"});
-		// const downloadLink = document.createElement("a");
-		// downloadLink.download = download_filename || "crossword.xd";
-		// downloadLink.href = URL.createObjectURL(file);
-		// downloadLink.click();
+		const dataxd = local_xd || "";
+		const file = new Blob([dataxd], {type: "text/plain;charset=utf-8"});
+		const downloadLink = document.createElement("a");
+		downloadLink.download = download_filename || "crossword.xd";
+		downloadLink.href = URL.createObjectURL(file);
+		downloadLink.click();
 	}
 
 	function handleXDUpload(msg: { content: string, filename: string }) {
@@ -309,6 +372,24 @@
 
 <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
 	<Instructions bind:visible="{ instructionsVisible }" />
+	
+	<!-- Error Alert -->
+	{#if showError && errorMessage}
+		<div class="mb-6 bg-red-50 border border-red-200 rounded-lg p-4 flex items-start gap-3 shadow-sm" role="alert">
+			<AlertCircle class="text-red-600 flex-shrink-0 mt-0.5" size={20} />
+			<div class="flex-1">
+				<h3 class="text-red-800 font-semibold mb-1">Invalid XML File</h3>
+				<p class="text-red-700 text-sm">{errorMessage}</p>
+			</div>
+			<button
+				onclick={dismissError}
+				class="text-red-600 hover:text-red-800 flex-shrink-0 p-1 rounded hover:bg-red-100 transition-colors"
+				aria-label="Dismiss error"
+			>
+				<X size={18} />
+			</button>
+		</div>
+	{/if}
 	
 	<div class="flex flex-col space-y-6">
 		<!-- Title and Action Bar -->
@@ -561,7 +642,7 @@
 				id="xd" 
 				name="xd" 
 				class="w-full h-96 border border-gray-300 rounded-lg p-4 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" 
-				bind:value="{xd}"
+				value={local_xd}
 			></textarea>
 		{/if}
 	</div>

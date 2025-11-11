@@ -62,6 +62,11 @@ export function isStartOfDown(grid:string[][], x: number, y: number) {
 }
 
 export function generateAcrossScalar(grid:string[][], clues: { across: CrosswordQuestion[], down: CrosswordQuestion[] }) {
+        // Guard against invalid grid - throw error if grid is invalid
+		if (!grid || !Array.isArray(grid) || grid.length === 0 || !grid[0] || !Array.isArray(grid[0]) || grid[0].length === 0) {
+			throw new Error('Invalid crossword grid: grid is empty or malformed. Cannot generate across scalar.');
+		}
+		
         const rows = grid.length;
         const cols = grid[0].length;
 		let questionNumber = 1;
@@ -69,7 +74,6 @@ export function generateAcrossScalar(grid:string[][], clues: { across: Crossword
 		const across: CrosswordBlock[] = [];
 		let letterIndex = 0;
 		let index = 0;
-		if (!grid || rows === 0 || cols === 0) return across;
 		for (let y = 0; y < rows; y++) {
 			for (let x = 0; x < cols; x++) {
 				if (!grid[y] || grid[y][x] === '#') continue;
@@ -122,9 +126,13 @@ export function generateAcrossScalar(grid:string[][], clues: { across: Crossword
 }
 
 export function generateDownScalar(grid:string[][], clues: { across: CrosswordQuestion[], down: CrosswordQuestion[] }) {
-    const rows = grid.length;
-    const cols = grid[0].length;
-    if (!grid || rows === 0 || cols === 0) return [];
+        // Guard against invalid grid - throw error if grid is invalid
+		if (!grid || !Array.isArray(grid) || grid.length === 0 || !grid[0] || !Array.isArray(grid[0]) || grid[0].length === 0) {
+			throw new Error('Invalid crossword grid: grid is empty or malformed. Cannot generate down scalar.');
+		}
+		
+        const rows = grid.length;
+        const cols = grid[0].length;
 		let questionNumber = 1;
 		let downQuestionNumber = 0;
 		const down: CrosswordBlock[] = [];
