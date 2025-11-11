@@ -1365,6 +1365,11 @@
 		return questionCells.map((cell) => cell.letter).join('');
 	}
 
+	function getQuestionCells(question: CrosswordQuestionType) {
+		const scalar = question.direction === 1 ? scalarDown : scalarAcross;
+		return scalar.filter((cell) => cell.question.alpha_number === question.alpha_number);
+	}
+
 	function isWordComplete() {
 		const pattern = getCurrentWordPattern();
 		return !pattern.includes('?');
@@ -1774,32 +1779,6 @@
 				</nav>
 				{/if}
 
-				{#if mode === 'grid'}
-					<div class="grid-mode-controls">
-						<div class="grid-size-control">
-							<label for="grid-size-slider" class="grid-size-label">Size: {size}x{size}</label>
-							<input
-								id="grid-size-slider"
-								type="range"
-								min="5"
-								max="30"
-								value={size}
-								oninput={(e) => handleSizeChange(parseInt((e.target as HTMLInputElement).value))}
-								class="grid-size-slider"
-							/>
-						</div>
-						<div class="grid-symmetry-control">
-							<input
-								type="checkbox"
-								id="grid-symmetry"
-								bind:checked={symmetry}
-								class="grid-symmetry-checkbox"
-							/>
-							<label for="grid-symmetry" class="grid-symmetry-label">Symmetry</label>
-						</div>
-					</div>
-				{/if}
-
 				<!-- Autocheck indicator in the middle -->
 				{#if autocheck}
 					<div class="autocheck-indicator">
@@ -1939,6 +1918,32 @@
 				</svg>
 			</div>
 
+			{#if mode === 'grid'}
+				<div class="grid-mode-controls">
+					<div class="grid-size-control">
+						<label for="grid-size-slider" class="grid-size-label">Size: {size}x{size}</label>
+						<input
+							id="grid-size-slider"
+							type="range"
+							min="5"
+							max="30"
+							value={size}
+							oninput={(e) => handleSizeChange(parseInt((e.target as HTMLInputElement).value))}
+							class="grid-size-slider"
+						/>
+					</div>
+					<div class="grid-symmetry-control">
+						<input
+							type="checkbox"
+							id="grid-symmetry"
+							bind:checked={symmetry}
+							class="grid-symmetry-checkbox"
+						/>
+						<label for="grid-symmetry" class="grid-symmetry-label">Symmetry</label>
+					</div>
+				</div>
+			{/if}
+
 			<MobileQuestionPanel
 				{currentQuestion}
 				direction={!!direction}
@@ -2018,6 +2023,22 @@
 										<span class="questions-list-item-question">{question.clue}</span>
 									</button>
 									{#if editMode}
+										<div class="questions-list-item-blocks">
+											{#each getQuestionCells(question) as cell}
+												{@const cellValue = grid[cell.y]?.[cell.x] || ''}
+												<div 
+													class="question-block-cell"
+													class:filled={cellValue && cellValue !== '' && cellValue !== '#'}
+													class:black={cellValue === '#'}
+												>
+													{#if cellValue && cellValue !== '' && cellValue !== '#'}
+														{cellValue}
+													{:else if cellValue === '#'}
+														<span class="block-x">×</span>
+													{/if}
+												</div>
+											{/each}
+										</div>
 										<button
 											class="questions-list-item-edit"
 											onclick={(e: MouseEvent) => {
@@ -2104,6 +2125,22 @@
 										<span class="questions-list-item-question">{question.clue}</span>
 									</button>
 									{#if editMode}
+										<div class="questions-list-item-blocks">
+											{#each getQuestionCells(question) as cell}
+												{@const cellValue = grid[cell.y]?.[cell.x] || ''}
+												<div 
+													class="question-block-cell"
+													class:filled={cellValue && cellValue !== '' && cellValue !== '#'}
+													class:black={cellValue === '#'}
+												>
+													{#if cellValue && cellValue !== '' && cellValue !== '#'}
+														{cellValue}
+													{:else if cellValue === '#'}
+														<span class="block-x">×</span>
+													{/if}
+												</div>
+											{/each}
+										</div>
 										<button
 											class="questions-list-item-edit"
 											onclick={(e: MouseEvent) => {
@@ -2799,9 +2836,10 @@
 	.grid-mode-controls {
 		display: flex;
 		align-items: center;
+		justify-content: center;
 		gap: 1rem;
-		margin-right: 0.5rem;
-		padding: 0.25rem 0.5rem;
+		margin: 1rem auto 0;
+		padding: 0.75rem 1rem;
 		background: #f9fafb;
 		border: 1px solid #e5e7eb;
 		border-radius: 0.375rem;
@@ -2809,6 +2847,7 @@
 		visibility: visible;
 		opacity: 1;
 		transition: opacity 0.2s ease, visibility 0.2s ease;
+		max-width: fit-content;
 	}
 
 	.grid-mode-controls.hidden {
@@ -2876,6 +2915,7 @@
 		flex-direction: row;
 		padding-left: 5px;
 		overflow-y: scroll;
+		gap: 1rem;
 	}
 
 	.questions-across,
@@ -2883,6 +2923,7 @@
 		/* overflow-y: scroll; */
 		flex: 1;
 		position: relative;
+		min-width: 0;
 	}
 
 	.questions-across h4,
@@ -2919,7 +2960,7 @@
 	.questions-list-item {
 		padding-left: 3px;
 		border-radius: 3px;
-		padding: 2px 3px;
+		padding: 4px 3px;
 		width: 100%;
 		display: flex;
 		align-items: flex-start;
@@ -2929,10 +2970,12 @@
 		font-size: inherit;
 		line-height: inherit;
 		position: relative;
+		flex-wrap: wrap;
 	}
 
 	.questions-list-item-button {
 		flex: 1;
+		min-width: 0;
 		cursor: pointer;
 		transition:
 			background-color 0.2s ease,
@@ -2971,7 +3014,7 @@
 	}
 
 	.questions-list-item-edit {
-		display: none;
+		display: flex;
 		align-items: center;
 		justify-content: center;
 		width: 1.25rem;
@@ -2981,8 +3024,9 @@
 		background: none;
 		cursor: pointer;
 		color: #6b7280;
-		opacity: 0.6;
-		transition: opacity 0.2s, color 0.2s;
+		opacity: 0;
+		visibility: hidden;
+		transition: opacity 0.2s, color 0.2s, visibility 0.2s;
 		flex-shrink: 0;
 	}
 
@@ -2998,7 +3042,8 @@
 
 	.questions-list-item:hover .questions-list-item-edit,
 	.questions-list-item.active .questions-list-item-edit {
-		display: flex;
+		opacity: 0.6;
+		visibility: visible;
 	}
 
 	.overlay {
@@ -3464,6 +3509,47 @@
 	.questions-list-item-action svg {
 		width: 0.875rem;
 		height: 0.875rem;
+	}
+
+	.questions-list-item-blocks {
+		display: flex;
+		flex-direction: row;
+		gap: 2px;
+		align-items: center;
+		margin-left: 0.5rem;
+		flex-wrap: wrap;
+	}
+
+	.question-block-cell {
+		width: 1.25rem;
+		height: 1.25rem;
+		min-width: 1.25rem;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		border: 1px solid #d1d5db;
+		background: #ffffff;
+		font-size: 0.7rem;
+		font-weight: 600;
+		color: #374151;
+		line-height: 1;
+	}
+
+	.question-block-cell.filled {
+		background: #f3f4f6;
+		border-color: #9ca3af;
+	}
+
+	.question-block-cell.black {
+		background: #1f2937;
+		border-color: #111827;
+	}
+
+	.question-block-cell.black .block-x {
+		color: #ffffff;
+		font-size: 0.9rem;
+		font-weight: bold;
+		line-height: 1;
 	}
 </style>
 
