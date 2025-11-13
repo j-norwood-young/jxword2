@@ -25,6 +25,7 @@
 
 	type Props = {
 		xd?: string;
+		title?: string;
 		size?: number;
 		difficulties?: string[];
 		types?: string[];
@@ -36,6 +37,7 @@
 
 	let { 
 		xd,
+		title = $bindable(""),
 		size = 15,
 		difficulties = [
 			"Easy", "Medium", "Hard", "Evil" 
@@ -49,7 +51,6 @@
 	
 	// State
 	let grid = $state([...Array(size)].map(e => Array(size).fill(" ")));
-	let title = $derived("");
 	let author = $derived("");
 	let date = $derived("");
 	let difficulty = $derived("Medium");
@@ -192,7 +193,7 @@
 			const result = XDParser(xd);
 			console.log({result});
 			const newData: CrosswordData = {
-				title: result.meta.Title || "",
+				title: title || result.meta.Title || "",
 				author: result.meta.Author || "",
 				copyright: result.meta.Copyright || "",
 				date: result.meta.Date || "",
@@ -366,6 +367,11 @@
 		} finally {
 			isAutofilling = false;
 		}
+	}
+
+	// Expose method to get XD string for external use (e.g., saving to CMS)
+	export function getXdString(): string {
+		return local_xd || '';
 	}
 
 </script>

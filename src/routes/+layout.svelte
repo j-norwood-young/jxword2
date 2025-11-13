@@ -1,7 +1,7 @@
 <script lang="ts">
 	import '../app.css';
 	import favicon from '$lib/assets/favicon.svg';
-	import { Plus, Play } from 'lucide-svelte';
+	import { Plus, Play, List } from 'lucide-svelte';
 
 	let { children } = $props();
 </script>
@@ -30,6 +30,15 @@
 						>
 							<Plus class="w-5 h-5 mr-3" />
 							Create
+						</a>
+					</li>
+					<li>
+						<a 
+							href="/list" 
+							class="flex items-center px-4 py-3 text-gray-700 rounded-lg hover:bg-gray-100 hover:text-gray-900 transition-colors duration-200"
+						>
+							<List class="w-5 h-5 mr-3" />
+							Crosswords
 						</a>
 					</li>
 					<li>
